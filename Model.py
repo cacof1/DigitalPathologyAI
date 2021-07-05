@@ -1,12 +1,11 @@
-import segmentation_models_pytorch as smp
 import matplotlib.pyplot as plt
 from pytorch_lightning import LightningDataModule, LightningModule
 import numpy as np
 import torch
+import CLAM
+print(dir(CLAM))
 
-
-
-
+"""
 ### Data Loader
 class DataModule(LightningDataModule):
   def __init__(self, image_array, mask_array, transform):
@@ -62,3 +61,4 @@ class ModelRegression(LightningModule):
 
 ## Main
 
+"""
