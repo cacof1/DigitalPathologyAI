@@ -15,7 +15,7 @@ print(nContours)
 for n in range(nContours):
     points = np.array(data[n]['geometry']['coordinates'])
     wsi_object = WholeSlideImage(sys.argv[2])
-    print(dir(wsi_object))
+    wsi_object.wsi.associated_images['label'].save('test.png')
     vis_level = 0
     dim = wsi_object.wsi.level_dimensions[vis_level]
     points = np.int32(points/wsi_object.wsi.level_downsamples[vis_level])
