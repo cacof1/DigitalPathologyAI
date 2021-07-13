@@ -23,11 +23,20 @@ for n in range(len(contours)):
     nb = 0
     for xmin,ymin in coords:
         nb = nb+1
+        if(nb<15000): continue
         mask = np.zeros((dim[1],dim[1]))
         point_temp = points - [xmin,ymin] ## shift the contour to be centered on the image
-        cv2.fillConvexPoly(mask, np.int32(point_temp), (255,255,255,255)) ## Create the mask
+        cv2.fillConvexPoly(mask, np.int32(point_temp), (1)) ## Create the mask
         if(np.max(mask)>0 and np.min(mask)==0.0):
-            img = np.array(wsi_object.wsi.read_region((xmin,ymin),vis_level,dim))
+            img = np.array(wsi_object.wsi.read_region((xmin,ymin),vis_level,dim))[:,:,:3]
+            """
+            #Visualize
+            plt.imshow(img)
+            plt.show()
+            plt.imshow(img)            
+            plt.imshow(mask, alpha=0.5)
+            plt.show()
+            """
             np.savez_compressed('Output/'+str(xmin)+"_"+str(ymin), img=img, mask=mask) 
 
 
