@@ -4,13 +4,36 @@ from torch.utils.data import DataLoader
 import torchvision
 import segmentation_models_pytorch as smp
 import albumentations as A
+import cv2
 from torch.utils.data import Dataset
 from pytorch_lightning.loggers import TensorBoardLogger
+import torchvision.models as models
 import numpy as np
 import torch
 import openslide
 import h5py, sys, glob
+import torch.nn.functional as F
 
+
+##Losses
+def CrossEntropy(output, target):
+   log_prob = F.log_softmax(output, dim=1)
+   loss = F.nll_loss(log_prob, torch.argmax(target, dim=1), reduction='none')
+   return torch.mean(loss)
+
+def SoftDiceLoss(output, target):
+   """
+   Reference: Milletari, F., Navab, N., & Ahmadi, S. (2016). V-Net: Fully Convolutional Neural Networks for Volumetric
+   Medical Image Segmentation. In International Conference on 3D Vision (3DV).                                                                                                                         
+   """
+   output = F.logsigmoid(output).exp()
+   axes = list(range(2, len(output.shape)))
+   eps = 1e-10
+   intersection = torch.sum(output * target + eps, axes)
+   output_sum_square = torch.sum(output * output + eps, axes)
+   target_sum_square = torch.sum(target * target + eps, axes)
+   sum_squares = output_sum_square + target_sum_square
+   return 1.0 - 2.0 * torch.mean(intersection / sum_squares)
 ### Dataset
 class DataGen(torch.utils.data.Dataset):
    def __init__(self, filelist, transform=None):
@@ -22,14 +45,17 @@ class DataGen(torch.utils.data.Dataset):
    
    def __getitem__(self, idx):
       data = np.load(self.filelist[idx])
-      mask = data['mask']
-      image  = data['img'] ## [H, W, C]
-      image = np.moveaxis(image, -1, 0) ## NCHW (Batch size, Channel, Height and Width) ## [C,H,W]
+      mask   = data['mask'].astype(np.uint8)
+      mask   = mask[np.newaxis] ## Add one dimension to represent the number of channels
+      image  = data['img'].astype(np.float32)
+      image  = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)[np.newaxis]
+      #image  = np.moveaxis(image, -1, 0) ## NCHW (Batch size, Channel, Height and Width) ## [C,H,W]
+      
       ## Normalization
       
       ## Transform
       if self.transform:
-         sample    = self.transform(image=image, mask=mask)
+         sample  = self.transform(image=image,mask=mask)
          image, mask = sample['image'], sample['mask']
       return image, mask
 
@@ -49,33 +75,33 @@ class DataModule(LightningDataModule):
       self.val_data      = DataGen(self.filelist[ids_split[0]:ids_split[1]], self.val_transform)
       self.test_data     = DataGen(self.filelist[ids_split[1]:ids_split[-1]], self.val_transform)
 
-   def train_dataloader(self):
-      return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=10)
-   def val_dataloader(self):
-      return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
-   def test_dataloader(self):
-      return DataLoader(self.test_data, batch_size=self.batch_size)
+   def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=10)
+   def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
+   def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
 
 ## Model
 class ModelRegression(LightningModule):
    def __init__(self) -> None:
       super().__init__()
-      self.model = smp.FPN("resnet18", in_channels=3, classes=1, encoder_weights='imagenet',activation='sigmoid')
-      self.loss_fcn = smp.losses.DiceLoss("binary",from_logits=False)
+      self.model = smp.FPN("resnet18", in_channels=1, classes=2)#models.segmentation.deeplabv3_resnet50()
+      self.loss_fcn = SoftDiceLoss
    
    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
       return self.model(x)
    
    def training_step(self, batch, batch_idx):
       image, mask = batch
-      prediction  = self(image)
+      prediction  = self(image)#['out']
+      #print("image",image.min(), image.max())
+      #print("mask",mask.min(),mask.max())
+      #print("prediction",prediction.min(),prediction.max())
       loss = self.loss_fcn(prediction,mask)
       self.log("loss", loss)
       return loss      
 
    def validation_step(self, batch, batch_idx):
       image, mask = batch
-      prediction = self(image)
+      prediction = self(image)#['out']
       loss = self.loss_fcn(prediction,mask)
       self.log("val_loss", loss)
       return loss      
@@ -92,10 +118,16 @@ trainer = Trainer(gpus=1, max_epochs=5, logger=logger)
 model   = ModelRegression()
 
 ## Transforms
-train_transform = A.Compose([A.HorizontalFlip(p=0.5),A.Rotate(5), A.Normalize(mean=(np.mean([0.485, 0.456, 0.406])), std=(np.mean([0.229, 0.224, 0.225])))]) ## Note mean of means, mean of stds])
-val_transform   = A.Compose([A.Normalize(mean=(np.mean([0.485, 0.456, 0.406])), std=(np.mean([0.229, 0.224, 0.225])))])
-## valdation pipeline just does normalisation and conversion to tensor
-data    = DataModule(filelist,train_transform = train_transform, val_transform = val_transform, batch_size=8)
+train_transform = A.Compose([
+   A.HorizontalFlip(p=0.5),
+   A.Rotate(5),
+   A.Normalize(mean=(np.mean([0.485, 0.456, 0.406])), std=(np.mean([0.229, 0.224, 0.225])))
+
+]) ## Note mean of means, mean of stds])
+val_transform   = A.Compose([
+   A.Normalize(mean=(np.mean([0.485, 0.456, 0.406])), std=(np.mean([0.229, 0.224, 0.225])))
+]) ## valdation pipeline just does normalisation and conversion to tensor
+data = DataModule(filelist,train_transform = train_transform, val_transform = val_transform, batch_size=16)
 trainer.fit(model, data)
 images, labels = next(iter(data.train_dataloader()))
 grid = torchvision.utils.make_grid(images) 
