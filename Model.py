@@ -14,7 +14,6 @@ import openslide
 import h5py, sys, glob
 import torch.nn.functional as F
 
-
 ##Losses
 def CrossEntropy(output, target):
    log_prob = F.log_softmax(output, dim=1)
@@ -134,3 +133,41 @@ grid = torchvision.utils.make_grid(images)
 logger.experiment.add_image('generated_images', grid)
 logger.experiment.add_graph(model,images)
 logger.experiment.close()
+
+##Prediction visualization
+def visualize(**images):
+
+    n = len(images)
+    plt.figure(figsize=(16, 5))
+    for i, (name, image) in enumerate(images.items()):
+        plt.subplot(1, n, i + 1)
+        plt.xticks([])
+        plt.yticks([])
+        plt.title(' '.join(name.split('_')).title())
+        plt.imshow(image)
+    plt.show()
+   
+best_model = torch.load('./best_model.pth')
+
+test_dataset = DataGen(data.test_data.filelist,transform=None )
+test_dataset_vis = DataGen(data.test_data.filelist,transform=val_transform )
+
+num_of_predictions = 10
+
+for i in range(num_of_predictions):
+    n = np.random.choice(len(test_dataset))
+    
+    image_vis = test_dataset_vis[n][0].astype('uint8')
+    image, gt_mask = test_dataset[n]
+    
+    gt_mask = gt_mask.squeeze()
+    
+    x_tensor = image.to(device).unsqueeze(0)
+    pr_mask = best_model.predict(x_tensor)
+    pr_mask = (pr_mask.squeeze().cpu().numpy().round())
+        
+    visualize(
+              image=image_vis, 
+              ground_truth_mask=gt_mask, 
+              predicted_mask=pr_mask
+              )
