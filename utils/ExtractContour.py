@@ -24,8 +24,8 @@ for n in range(len(contours)):
     nb = 0
     for xmin,ymin in coords:
         mask = np.zeros((dim[1],dim[1]))
-        point_temp = points - [xmin,ymin] ## shift the contour to be centered on the image
-        cv2.fillConvexPoly(mask, np.int32(point_temp), (1)) ## Create the mask        
+        point_temp = points - [xmin,ymin] ## shift the contour to be centered on the image        
+        cv2.fillConvexPoly(mask, np.int32(point_temp), (1)) ## Create the mask
         #if(np.max(mask)>0 and np.min(mask)==0.0):
         
         id_pos = np.where(mask.flatten()==1)

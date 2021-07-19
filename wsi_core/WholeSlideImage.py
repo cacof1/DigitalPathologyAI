@@ -15,7 +15,7 @@ import math
 from wsi_core.wsi_utils import savePatchIter_bag_hdf5, initialize_hdf5_bag, coord_generator, save_hdf5, sample_indices, screen_coords, isBlackPatch, isWhitePatch, to_percentiles
 import itertools
 from wsi_core.util_classes import isInContourV1, isInContourV2, isInContourV3_Easy, isInContourV3_Hard, Contour_Checking_fn
-from utils.file_utils import load_pkl, save_pkl
+import pickle
 
 Image.MAX_IMAGE_PIXELS = 933120000
 
@@ -77,15 +77,18 @@ class WholeSlideImage(object):
 
     def initSegmentation(self, mask_file):
         # load segmentation results from pickle file
-        import pickle
-        asset_dict = load_pkl(mask_file)
+        loader = open(mask_file,'rb')
+        asset_dict = pickle.load(loader)
+        loader.close()        
         self.holes_tissue = asset_dict['holes']
         self.contours_tissue = asset_dict['tissue']
 
     def saveSegmentation(self, mask_file):
         # save segmentation results using pickle
         asset_dict = {'holes': self.holes_tissue, 'tissue': self.contours_tissue}
-        save_pkl(mask_file, asset_dict)
+        writer = open(mask_file,'wb')
+        pickle.dump(asset_dict, writer)
+        writer.close()
 
     def segmentTissue(self, seg_level=0, sthresh=20, sthresh_up = 255, mthresh=7, close = 0, use_otsu=False, 
                             filter_params={'a_t':100}, ref_patch_size=512, exclude_ids=[], keep_ids=[]):

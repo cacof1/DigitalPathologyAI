@@ -9,3 +9,8 @@ To set up your Python environment:
 conda env create --file environment.yml
 conda activate DigitalPathologyAI
 ```
+
+To then set up your file as a module, please use
+```shell script
+conda-develop /path/to/DigitalPathologyAI/
+```
