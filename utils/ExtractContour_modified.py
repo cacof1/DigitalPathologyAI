@@ -63,6 +63,9 @@ for coord in coords:
     plt.imshow(mask_temp)
     plt.show()  
     '''
+    if i % 1000 == 0:
+        print('{} images processed'.format(i))
+        
     i += 1
     
 labels = np.array(labels)
