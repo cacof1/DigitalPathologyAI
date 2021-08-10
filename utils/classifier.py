@@ -140,7 +140,7 @@ model = ImageClassifier()
 log = sys.argv[1]                                  
 model = ImageClassifier.load_from_checkpoint(log)  #load the pre-trained model from log
 model.freeze()
-trainer = pl.Trainer(gpus=1)  
+trainer = pl.Trainer(gpus=0)  
 
 coords_file = h5py.File(sys.argv[2], "r")    #load the h5 file
 wsi_object = WholeSlideImage(sys.argv[3])    #load the svs file
