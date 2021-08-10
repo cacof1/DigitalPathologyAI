@@ -152,13 +152,20 @@ dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 print('START MAKING PREDICTION ON {}'.format(filename))
 preds = trainer.predict(model, dataloader)                              
 
-np.savez('predictions_{}.npz'.format(filename),predictions = preds)       
+predictions = []
+features = []
+
+for i in range(len(preds)):
+    predictions.append(preds[i][0].cpu().numpy())
+    features.append(preds[i][1].cpu().numpy())
+
+predictions = np.array(predictions).squeeze()
+features = np.array(features).squeeze()
+
+np.savez('predictions_{}.npz'.format(filename),predictions = predictions, features = features) 
 
 #load predictions by:
-#data = np.load('predictions_{}.npz'.format(filename),allow_pickle=True)
-#preds = data['predictions']
-#for i in range(preds.shape[0]):
-    #preds[i,0] = preds[i,0].cpu().numpy().squeeze()[1]
+#data = np.load('data/auto_contouring_results/new_format/predictions_{}.npz'.format(filename),allow_pickle=True)
+#predictions = data['predictions']
 
-#predictions = preds[:,0]
-#bol = predictions>0.5    #'True' implys there's a tumour patch
+#bol = predictions[:,1]>0.5    #'True' implys there's a tumour patch
