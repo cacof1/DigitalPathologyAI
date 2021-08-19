@@ -19,8 +19,10 @@ from torch.utils.data import Dataset,Subset
 from torchvision import datasets, models,transforms
 import matplotlib.pyplot as plt
 
-filename = '484806'
-basepath = 'C:/Users/zhuoy/Note/PathAI/data/'
+
+basepath = sys.argv[1]
+filename = sys.argv[2]
+
 coords_file = h5py.File(basepath + 'wsi/{}.h5'.format(filename),'r')
 wsi_object = WholeSlideImage(basepath + 'wsi/{}.svs'.format(filename))
 coords = coords_file['coords']   
@@ -34,7 +36,7 @@ for i in dirs:
     if os.path.splitext(i)[1] == '.npz':
         ids.append(i)
     
-#%%
+
 def visualize_prediction(file):
     data = np.load(basepath + '{}_mitosis/{}'.format(filename,file))
     top_left = data['top_left']
