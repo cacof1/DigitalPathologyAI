@@ -9,12 +9,20 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import sys
 import pandas as pd
 from wsi_core.WholeSlideImage import WholeSlideImage
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset,Subset
 from torchvision import datasets, models
 import transforms as T
+import torchvision
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection import FasterRCNN
+from torchvision.models.detection.rpn import AnchorGenerator
+from engine import train_one_epoch, evaluate
+import utils_
+
 
 def get_transform(train):
     transforms = []
@@ -73,36 +81,6 @@ class Dataset(Dataset):
         return self.df.shape[0]
 
 
-import torchvision
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-
-model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
-num_classes = 2  
-in_features = model.roi_heads.box_predictor.cls_score.in_features
-model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-
-import torchvision
-from torchvision.models.detection import FasterRCNN
-from torchvision.models.detection.rpn import AnchorGenerator
-
-backbone = torchvision.models.mobilenet_v2(pretrained=True).features
-backbone.out_channels = 1280
-
-anchor_generator = AnchorGenerator(sizes=((32, 64, 128, 256, 512),),
-                                   aspect_ratios=((0.5, 1.0, 2.0),))
-
-roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'],
-                                                output_size=7,
-                                                sampling_ratio=2)
-
-model = FasterRCNN(backbone,
-                   num_classes=2,
-                   rpn_anchor_generator=anchor_generator,
-                   box_roi_pool=roi_pooler)
-
-import torchvision
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-
 def get_model_instance_segmentation(num_classes):
 
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
@@ -112,15 +90,11 @@ def get_model_instance_segmentation(num_classes):
     return model
 
 
-from engine import train_one_epoch, evaluate
-import utils_
-
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 num_classes = 2
-    # use our dataset and defined transformations
 
-filename = '484806'
-basepath = 'C:/Users/zhuoy/Note/PathAI/data/'
+basepath = sys.argv[1]
+filename = sys.argv[2]
 wsi_object = WholeSlideImage(basepath + 'wsi/{}.svs'.format(filename))
 df = pd.read_csv('mitosis{}.csv'.format(filename))                 
 dataset = Dataset(df,wsi_object,get_transform(train=True))
@@ -143,13 +117,12 @@ model.to(device)
 params = [p for p in model.parameters() if p.requires_grad]
 optimizer = torch.optim.SGD(params, lr=0.005,
                             momentum=0.9, weight_decay=0.0005)
-    # and a learning rate scheduler
+
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
                                                step_size=3,
                                                gamma=0.1)
 
-    # let's train it for 10 epochs
-num_epochs = 20
+num_epochs = 10
 
 for epoch in range(num_epochs):
         # train for one epoch, printing every 10 iterations
@@ -160,7 +133,4 @@ for epoch in range(num_epochs):
     evaluate(model, data_loader_test, device=device)
     
 torch.save(model, 'fasterrcnn_resnet50_fpn')
-#torch.save(model.state_dict(), 'mitosis_detection_w')
-np.save('test_indices.npy',indices[-10:])
-    
-print('{} and {} Saved!'.format('fasterrcnn_resnet50_fpn','test_indices.npy'))
+#torch.save(model.state_dict(), 'model_weights')
