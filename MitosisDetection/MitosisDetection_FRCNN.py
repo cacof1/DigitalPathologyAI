@@ -56,10 +56,9 @@ class Dataset(Dataset):
         #cv2.rectangle(img,(xmin,ymin),(xmax,ymax),(1))
         #plt.imshow(img)    
         #plt.show() 
-        # convert everything into a torch.Tensor
+
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
-        # there is only one class
         label = torch.ones((num_objs,), dtype=torch.int64)
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
@@ -125,11 +124,8 @@ lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
 num_epochs = 10
 
 for epoch in range(num_epochs):
-        # train for one epoch, printing every 10 iterations
     train_one_epoch(model, optimizer, data_loader_train, device, epoch, print_freq=10)
-        # update the learning rate
     lr_scheduler.step()
-        # evaluate on the test dataset
     evaluate(model, data_loader_test, device=device)
     
 torch.save(model, 'fasterrcnn_resnet50_fpn')
