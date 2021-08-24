@@ -32,7 +32,7 @@ class Dataset(Dataset):
         self.df = df
         self.wsi = wsi_object
     def __getitem__(self, i):
-        # load images and masks
+
         vis_level = 0
         dim = (256,256)
         top_left = (df['top_left_x'][i],df['top_left_y'][i])
@@ -50,7 +50,6 @@ class Dataset(Dataset):
         #cv2.rectangle(img,(xmin,ymin),(xmax,ymax),(1))
         #plt.imshow(img)    
         #plt.show() 
-        # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
         # there is only one class
@@ -80,7 +79,6 @@ from torchvision.models.detection.retinanet import RetinaNetClassificationHead
 def get_model_instance_segmentation(num_classes):
 
     model = torchvision.models.detection.retinanet_resnet50_fpn(pretrained=True)
-# replace classification layer 
     in_features = model.head.classification_head.conv[0].in_channels
     num_anchors = model.head.classification_head.num_anchors
     #model.head.classification_head.num_classes = num_classes
@@ -101,10 +99,10 @@ import utils_
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 num_classes = 2
-    # use our dataset and defined transformations
 
-filename = '484806'
-basepath = 'C:/Users/zhuoy/Note/PathAI/data/'
+basepath = sys.argv[0]
+filename = sys.argv[1]
+
 wsi_object = WholeSlideImage(basepath + 'wsi/{}.svs'.format(filename))
 df = pd.read_csv('mitosis{}.csv'.format(filename))                 
 dataset = Dataset(df,wsi_object,get_transform(train=True))
@@ -127,24 +125,18 @@ model.to(device)
 params = [p for p in model.parameters() if p.requires_grad]
 optimizer = torch.optim.SGD(params, lr=0.001,
                             momentum=0.9, weight_decay=0.0005)
-    # and a learning rate scheduler
+
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=3,gamma=0.1)
 
 num_epochs = 15
 
 for epoch in range(num_epochs):
-        # train for one epoch, printing every 10 iterations
     train_one_epoch(model, optimizer, data_loader_train, device, epoch, print_freq=10)
-        # update the learning rate
     lr_scheduler.step()
-        # evaluate on the test dataset
     evaluate(model, data_loader_test, device=device)
     
-model_id = 2
+model_id = 0
 torch.save(model, 'retina_resnet50_fpn{}'.format(model_id))
 #torch.save(model.state_dict(), 'mitosis_detection_w')
 np.save('test_indices.npy{{}'.format(model_id),indices[-10:])
-    
-print('retina_resnet50_fpn{} and {} Saved!'.format(model_id,'test_indices.npy'))
-
 
