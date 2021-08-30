@@ -28,6 +28,12 @@ nb = 0
 for xmin,ymin in coords:
     point = Point(xmin,ymin)
     img = np.array(wsi_object.wsi.read_region((xmin,ymin),vis_level,dim))[:,:,:3]
-    np.savez_compressed('Output/'+str(xmin)+"_"+str(ymin), img=img, value=polygon.contains(point))
-    if(nb%1000==0) : print(nb)
-
+    np.savez_compressed('Output/'+str(xmin)+"_"+str(ymin), img=img)
+    values_to_add = {}
+    values_to_add["point"] = (xmin,ymin)
+    values_to_add["value"] = polygon.contains(point)
+    df = df.append(pd.Series(values_to_add,name=nb))
+    if(nb%100==0) : print(nb)
+    nb = nb+1
+    if(nb==1000): break
+df.to_csv("Output/DataFile.csv")
