@@ -22,3 +22,10 @@ To then set up your file as a module, please use
 ```shell script
 conda-develop /path/to/DigitalPathologyAI/
 ```
+
+The first step to run the different code is to run the TileDataset.sh shell file, and to point it at your directory containing your datafiles
+```shell script
+source TileDataset.sh SlideDirectory/
+```
+
+This will create a folder (Preprocessing) containing mask, patches, and stitches for each slides with the coords of each tile of interest within each slide.
