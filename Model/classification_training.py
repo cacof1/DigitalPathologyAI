@@ -181,7 +181,7 @@ model = ImageClassifier()
 checkpoint_callback = ModelCheckpoint(
     monitor='val_acc',
     dirpath=log_path,
-    filename='vis1_{epoch:02d}-{val_acc:.2f}',
+    filename='{epoch:02d}-{val_acc:.2f}',
     save_top_k=1,
     mode='max',
 )
