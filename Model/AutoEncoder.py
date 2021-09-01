@@ -3,7 +3,7 @@ from pytorch_lightning import LightningDataModule, LightningModule, Trainer,seed
 from torch.utils.data import DataLoader
 import torchvision
 from torchvision import transforms
-
+import pandas as pd
 from unet import UNet
 import cv2
 from torch.utils.data import Dataset
@@ -19,23 +19,22 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 ### Dataset
 class DataGen(torch.utils.data.Dataset):
-    def __init__(self, filelist, transform=None):
+    def __init__(self, coords_file,wsi_file, transform=None):
         super().__init__()
-        self.filelist     = filelist
         self.transform    = transform
-        self.coords_file  = None
-        self.wsi_slide    = None
-        
+        self.coords_file  = coords_file
+        self.wsi_file     = wsi_file
+
+        self.vis_level    = 0
+        self.dim          = (256,256)
     def __len__(self):
-        return self.filelist.shape[0]
+        return int(self.coords_file.shape[0]/100)
     
-    def __getitem__(self, idx):
-        self.coords_file = h5py.File(sys.argv[2], "r")
-        self.wsi_slide   = WholeSlideImage(sys.argv[3])        
-        data             = np.load(self.filelist[idx])
-        image            = data['img']
-        
-        ## Normalization
+    def __getitem__(self, id):
+        # load image
+        coords_x,coords_y,patient_id = self.coords_file.iloc[id,:]
+        image = np.array(self.wsi_file[patient_id].wsi.read_region([coords_x, coords_y], self.vis_level, self.dim).convert("RGB"))
+        ## Normalization -- To do 
       
         ## Transform
         if self.transform: image  = self.transform(image)
@@ -43,9 +42,10 @@ class DataGen(torch.utils.data.Dataset):
 
 ### DataLoader
 class DataModule(LightningDataModule):
-    def __init__(self, filelist, train_transform = None, val_transform = None, batch_size = 8):
+    def __init__(self, coords_file, wsi_file, train_transform = None, val_transform = None, batch_size = 8):
         super().__init__()
-        self.filelist        = filelist
+        self.coords_file     = coords_file
+        self.wsi_file        = wsi_file        
         self.train_transform = train_transform
         self.val_transform   = val_transform         
         self.batch_size      = batch_size
@@ -55,10 +55,10 @@ class DataModule(LightningDataModule):
         
     def setup(self, stage):
         
-        ids_split          = np.round(np.array([0.7, 0.8, 1.0])*len(self.filelist)).astype(np.int32)
-        self.train_data    = DataGen(self.filelist[:ids_split[0]], self.train_transform)
-        self.val_data      = DataGen(self.filelist[ids_split[0]:ids_split[1]], self.val_transform)
-        self.test_data     = DataGen(self.filelist[ids_split[1]:ids_split[-1]], self.val_transform)
+        ids_split          = np.round(np.array([0.7, 0.8, 1.0])*len(self.coords_file)).astype(np.int32)
+        self.train_data    = DataGen(self.coords_file[:ids_split[0]], self.wsi_file  ,self.train_transform)
+        self.val_data      = DataGen(self.coords_file[ids_split[0]:ids_split[1]], self.wsi_file, self.val_transform)
+        self.test_data     = DataGen(self.coords_file[ids_split[1]:ids_split[-1]], self.wsi_file ,self.val_transform)
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=10)
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
@@ -119,9 +119,27 @@ invTrans   = transforms.Compose([
     transforms.Normalize(mean = [ -0.485, -0.456, -0.406 ], std = [ 1., 1., 1. ]),
     torchvision.transforms.ToPILImage(),
 ])
-    
+
+
+##First create a master loader
+CoordsFolder = sys.argv[1]
+WSIPath      = "Box01/"
+
+wsi = {}
+df = pd.DataFrame()
+for filenb,filename in enumerate(glob.glob(CoordsFolder+"*.h5")):
+    coords          = np.array(h5py.File(filename, "r")['coords'])
+    patient_id      = filename.split("/")[-1][:-3]
+    wsi_object      = WholeSlideImage(WSIPath + '{}.svs'.format(patient_id))
+
+    df_temp              = pd.DataFrame(coords,columns=['coords_x','coords_y'])
+    df_temp['patient_id'] = patient_id
+    wsi[patient_id] = wsi_object
+    if(filenb==0): df = df_temp
+    else: df = df.append(df_temp)
+
+
 ## Main
-filelist = np.array(glob.glob(sys.argv[1]+"*.npz"))
 seed_everything(42) 
 
 ## Callbacks
@@ -129,18 +147,17 @@ callbacks = [
     ModelCheckpoint(dirpath='./',filename="model.{epoch:02d}-{val_loss:.2f}.h5"),
     EarlyStopping(monitor='val_loss')
     ]
-
 #logger   = TensorBoardLogger("tb_logs", name="my_model")
 trainer  = Trainer(gpus=1, max_epochs=5,callbacks=callbacks)
 model    = AutoEncoder()
 
-data     = DataModule(filelist,train_transform = train_transform, val_transform = val_transform, batch_size=2)
+data     = DataModule(df, wsi,train_transform = train_transform, val_transform = val_transform, batch_size=8)
 trainer.fit(model, data)
 torch.save(model,'best_model.pth')
 
 ## Testing
-model   = AutoEncoder.load_from_checkpoint(callbacks[0].best_model_path)
-test_dataset     = DataGen(filelist,transform=val_transform)
+model              = AutoEncoder.load_from_checkpoint(callbacks[0].best_model_path)
+test_dataset       = DataGen(filelist,transform=val_transform)
 num_of_predictions = 10
 for n in range(num_of_predictions):
     image     = test_dataset[n][np.newaxis] 

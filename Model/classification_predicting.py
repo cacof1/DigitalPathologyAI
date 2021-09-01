@@ -40,7 +40,6 @@ class Dataset(BaseDataset):
     def __init__(
             self, 
             coords,
-            #labels,
             wsi_object, 
             channels=3,
     ):
@@ -162,7 +161,7 @@ for i in range(len(preds)):
 predictions = np.array(predictions).squeeze()
 features = np.array(features).squeeze()
 
-np.savez('predictions_{}.npz'.format(filename),predictions = predictions, features = features) 
+np.savez('predict1ions_{}.npz'.format(filename),predictions = predictions, features = features) 
 
 #load predictions by:
 #data = np.load('data/auto_contouring_results/new_format/predictions_{}.npz'.format(filename),allow_pickle=True)
