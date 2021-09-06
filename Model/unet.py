@@ -39,36 +39,40 @@ class UNet(nn.Module):
         self.depth = depth
         self.concat = concat
         prev_channels = in_channels
-        self.down_path = nn.ModuleList()
+
+        ### Encoder
+        self.encoder = nn.ModuleList()
         for i in range(depth):
-            self.down_path.append(UNetConvBlock(prev_channels, 2**(wf+i),
+            self.encoder.append(UNetDownBlock(prev_channels, 2**(wf+i),
                                                 padding, batch_norm))
             prev_channels = 2**(wf+i)
 
-        self.up_path = nn.ModuleList()
+        ### Decoder
+        self.decoder = nn.ModuleList()
         for i in reversed(range(depth - 1)):
-            self.up_path.append(UNetUpBlock(prev_channels, 2**(wf+i), up_mode,
+            self.decoder.append(UNetUpBlock(prev_channels, 2**(wf+i), up_mode,
                                             padding, batch_norm , concat))
             prev_channels = 2**(wf+i)
         self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=1)
 
+    ## Write the Modules
     def forward(self, x):
         blocks = []
-        for i, down in enumerate(self.down_path):
+        for i, down in enumerate(self.encoder):
             x = down(x)
-            if i != len(self.down_path)-1:
+            if i != len(self.encoder)-1:
                 blocks.append(x)
                 x = F.avg_pool2d(x, 2)
 
-        for i, up in enumerate(self.up_path):
+        for i, up in enumerate(self.decoder):
             x = up(x, blocks[-i-1])
             
         return self.last(x)
 
 
-class UNetConvBlock(nn.Module):
+class UNetDownBlock(nn.Module):
     def __init__(self, in_size, out_size, padding, batch_norm):
-        super(UNetConvBlock, self).__init__()
+        super(UNetDownBlock, self).__init__()
         block = []
 
         block.append(nn.Conv2d(in_size, out_size, kernel_size=3, padding=int(padding)))
@@ -91,13 +95,12 @@ class UNetUpBlock(nn.Module):
         super(UNetUpBlock, self).__init__()
         self.concat=concat
         if up_mode == 'upconv':
-            self.up = nn.ConvTranspose2d(in_size, out_size, kernel_size=2,
-                                         stride=2)
+            self.up = nn.ConvTranspose2d(in_size, out_size, kernel_size=2,stride=2)
         elif up_mode == 'upsample':
             self.up = nn.Sequential(nn.Upsample(mode='bilinear', scale_factor=2),
                                     nn.Conv2d(in_size, out_size, kernel_size=1))
 
-        self.conv_block = UNetConvBlock(in_size, out_size, padding, batch_norm)
+        self.conv_block = UNetDownBlock(in_size, out_size, padding, batch_norm)
 
     def center_crop(self, layer, target_size):
         _, _, layer_height, layer_width = layer.size()
