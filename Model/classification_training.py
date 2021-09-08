@@ -1,4 +1,4 @@
-mport torch
+import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
@@ -26,11 +26,14 @@ from segmentation_models_pytorch.encoders import get_preprocessing_fn
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#device = 'cpu'
+import pytorch_lightning as pl
+from torchmetrics.functional import accuracy
+from torch.nn.functional import cross_entropy
+from torch.optim import Adam
+from torch.nn import functional as F
+from torch.nn.functional import softmax
+from pytorch_lightning.callbacks import ModelCheckpoint
 
-dim = (256,256)
-vis_level = 0
 
 class Dataset(BaseDataset):
 
@@ -70,34 +73,7 @@ class Dataset(BaseDataset):
     def __len__(self):
         return len(self.labels)
 
-basepath = sys.argv[1]
-filename = sys.argv[2]
-log_path = sys.argv[3]
 
-coords_file = h5py.File(basepath + 'patches/{}.h5'.format(filename),'r')
-wsi_object = WholeSlideImage(basepath + 'wsi/{}.svs'.format(filename))
-coords = coords_file['coords']
-labels = coords_file['label']
-
-dataset = Dataset(coords=coords, labels = labels, wsi_object=wsi_object)
-train_size = int(0.7 * len(dataset))
-val_size = len(dataset) - train_size
-train_data, val_data = torch.utils.data.random_split(dataset, [train_size, val_size])
-
-dataset_sizes = {'train':train_size,
-                 'val':val_size }
-
-train_dataloader = DataLoader(train_data, batch_size=100, shuffle=True, num_workers=0)
-val_dataloader = DataLoader(val_data, batch_size=100, shuffle=False, num_workers=0)
-
-
-import pytorch_lightning as pl
-from torchmetrics.functional import accuracy
-from torch.nn.functional import cross_entropy
-from torch.optim import Adam
-from torch.nn import functional as F
-from torch.nn.functional import softmax
-from pytorch_lightning.callbacks import ModelCheckpoint
 
 class ImageClassifier(pl.LightningModule):
     
@@ -175,17 +151,46 @@ class ImageClassifier(pl.LightningModule):
         # return optimizer
         optimizer = Adam(self.parameters(), lr=self.lr)
         return optimizer
- 
-model = ImageClassifier()
+    
+if __name__ == "__main__":
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #device = 'cpu'
 
-checkpoint_callback = ModelCheckpoint(
-    monitor='val_acc',
-    dirpath=log_path,
-    filename='{epoch:02d}-{val_acc:.2f}',
-    save_top_k=1,
+    dim = (256,256)
+    vis_level = 0
+
+
+    basepath = sys.argv[1]
+    filename = sys.argv[2]
+    log_path = sys.argv[3]
+    
+    coords_file = h5py.File(basepath + 'patches/{}.h5'.format(filename),'r')
+    wsi_object = WholeSlideImage(basepath + 'wsi/{}.svs'.format(filename))
+    coords = coords_file['coords']
+    labels = coords_file['label']
+    
+    dataset = Dataset(coords=coords, labels = labels, wsi_object=wsi_object)
+    train_size = int(0.7 * len(dataset))
+    val_size = len(dataset) - train_size
+    train_data, val_data = torch.utils.data.random_split(dataset, [train_size, val_size])
+    
+    dataset_sizes = {'train':train_size,
+                     'val':val_size }
+    
+    train_dataloader = DataLoader(train_data, batch_size=100, shuffle=True, num_workers=0)
+    val_dataloader = DataLoader(val_data, batch_size=100, shuffle=False, num_workers=0)
+    
+    
+    model = ImageClassifier()
+    
+    checkpoint_callback = ModelCheckpoint(
+        monitor='val_acc',
+        dirpath=log_path,
+        filename='{epoch:02d}-{val_acc:.2f}',
+        save_top_k=1,
     mode='max',
-)
+    )
 
-trainer = pl.Trainer(gpus=1, max_epochs=3,callbacks=[checkpoint_callback])  
-
-trainer.fit(model, train_dataloader, val_dataloader)
+    trainer = pl.Trainer(gpus=1, max_epochs=3,callbacks=[checkpoint_callback])  
+    
+    trainer.fit(model, train_dataloader, val_dataloader)
