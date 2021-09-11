@@ -13,8 +13,6 @@ import h5py
 import sys
 import cv2
 
-from wsi_core.WholeSlideImage import WholeSlideImage
-import geojson
 from torchvision import transforms
 import matplotlib.pyplot as plt
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -33,47 +31,6 @@ from torch.optim import Adam
 from torch.nn import functional as F
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
-
-
-class Dataset(BaseDataset):
-
-    
-    def __init__(
-            self, 
-            coords,
-            labels,
-            wsi_object, 
-            channels=3,
-    ):
-        self.wsi = wsi_object
-        self.coords = coords
-        self.labels = labels        
-        self.channels = channels
-        self.transforms = transforms.Compose(
-					[
-					 transforms.ToTensor(),
-					 transforms.Normalize(mean = (0.485, 0.456, 0.406), std = (0.229, 0.224, 0.225))
-					]
-				)
-        
-    def __getitem__(self, i):
-        # read data
-        coord = coords[i]
-        image_vis = np.array(wsi_object.wsi.read_region(tuple(coord), vis_level, dim).convert("RGB"))
-        image = image_vis
-        label = self.labels[i]
-
-        if self.transforms:   
-            image = self.transforms(image)
-             
-        label = torch.tensor(label, dtype=torch.long, device=device)
-        
-        return image, label#, image_vis
-        
-    def __len__(self):
-        return len(self.labels)
-
-
 
 class ImageClassifier(pl.LightningModule):
     
@@ -109,10 +66,10 @@ class ImageClassifier(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # return the loss given a batch: this has a computational graph attached to it: optimization
-        x, y = batch
-        logits, features = self(x)
-        loss = F.cross_entropy(logits, y) 
-        acc = accuracy(logits, y)
+        image, labels = batch
+        logits, features = self(image)
+        loss = F.cross_entropy(logits, labels) 
+        acc = accuracy(logits, labels)
         
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('train_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
@@ -122,10 +79,11 @@ class ImageClassifier(pl.LightningModule):
      
     def validation_step(self, batch, batch_idx):
 
-        x, y = batch
-        logits, features = self(x)
-        loss = F.cross_entropy(logits, y) 
-        acc = accuracy(logits, y)
+        image, labels = batch
+        logits, features = self(image)
+        loss = F.cross_entropy(logits, labels) 
+        acc = accuracy(logits, labels)        
+
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('val_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         
@@ -134,10 +92,11 @@ class ImageClassifier(pl.LightningModule):
     
     def testing_step(self, batch, batch_idx):
 
-        x, y = batch
-        logits, features = self(x)
-        loss = F.cross_entropy(logits, y) 
-        acc = accuracy(logits, y)
+        image, labels = batch
+        logits, features = self(image)
+        loss = F.cross_entropy(logits, labels) 
+        acc = accuracy(logits, labels)        
+
         self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('test_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         
@@ -153,34 +112,9 @@ class ImageClassifier(pl.LightningModule):
         return optimizer
     
 if __name__ == "__main__":
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    #device = 'cpu'
 
-    dim = (256,256)
-    vis_level = 0
-
-
-    basepath = sys.argv[1]
-    filename = sys.argv[2]
-    log_path = sys.argv[3]
-    
-    coords_file = h5py.File(basepath + 'patches/{}.h5'.format(filename),'r')
-    wsi_object = WholeSlideImage(basepath + 'wsi/{}.svs'.format(filename))
-    coords = coords_file['coords']
-    labels = coords_file['label']
-    
-    dataset = Dataset(coords=coords, labels = labels, wsi_object=wsi_object)
-    train_size = int(0.7 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_data, val_data = torch.utils.data.random_split(dataset, [train_size, val_size])
-    
-    dataset_sizes = {'train':train_size,
-                     'val':val_size }
-    
-    train_dataloader = DataLoader(train_data, batch_size=100, shuffle=True, num_workers=0)
-    val_dataloader = DataLoader(val_data, batch_size=100, shuffle=False, num_workers=0)
-    
-    
+    wsi_file, coords_file = LoadFileParameter(sys.argv[1])
+    data  = DataModule(coords_file, wsi_file)#, train_transform = train_transform, val_transform = val_transform, batch_size=2)    
     model = ImageClassifier()
     
     checkpoint_callback = ModelCheckpoint(
@@ -191,6 +125,5 @@ if __name__ == "__main__":
     mode='max',
     )
 
-    trainer = pl.Trainer(gpus=1, max_epochs=3,callbacks=[checkpoint_callback])  
-    
-    trainer.fit(model, train_dataloader, val_dataloader)
+    trainer = pl.Trainer(gpus=1, max_epochs=3,callbacks=[checkpoint_callback])      
+    trainer.fit(model, data)

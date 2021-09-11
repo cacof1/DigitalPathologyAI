@@ -5,19 +5,6 @@ from torch.utils.data import DataLoader
 import torchvision
 from torchvision import transforms
 import pandas as pd
-
-##Utils
-from utils.StainNorm import normalizeStaining
-
-##Dataloaders
-from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator
-
-## Models
-from Model.unet import UNet
-from Model.VGG_AutoEncoder import AutoEncoderVGG
-from Model.classification_training import ImageClassifier
-
-
 import cv2
 from torch.utils.data import Dataset
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -30,6 +17,16 @@ import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+
+## Module - Utils
+from utils.StainNorm import normalizeStaining
+
+## Module - Dataloaders
+from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator
+
+## Module - Models
+from Model.unet import UNet
+
 
 ## Model
 class AutoEncoder(LightningModule):
@@ -44,15 +41,15 @@ class AutoEncoder(LightningModule):
         return self.model(x)
    
     def training_step(self, batch, batch_idx):
-        image = batch
+        image,label = batch
         prediction  = self.forward(image)
         loss = self.loss_fcn(prediction, image)
         self.log("loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        image = batch
-        prediction = self.forward(image)
+        image,label = batch
+        prediction  = self.forward(image)
         loss = self.loss_fcn(prediction,image)
         self.log("val_loss", loss)
         return loss
@@ -89,29 +86,24 @@ if __name__ == "__main__":
     ])
     
     ##First create a master loader
-    wsi_file, coords_file = LoadFileParameter(sys.argv[1])    
+    wsi_file, coords_file = LoadFileParameter(sys.argv[1])
+    print(coords_file)
     seed_everything(42) 
 
-    ## Load the previous  model
-    model_dict = {}
-    model_dict["classifier"] = ImageClassifier.load_from_checkpoint(sys.argv[2])
-    model_dict["classifier"].freeze()
-    
     callbacks = [
-        ModelCheckpoint(
-            dirpath='./',
-            monitor='val_loss',
-            filename="model.{epoch:02d}-{val_loss:.2f}.h5",
-            save_top_k=1,
-            mode='max'),
+        ##ModelCheckpoint(
+        ##  dirpath='./',
+        ##monitor='val_loss',
+        ##filename="model.{epoch:02d}-{val_loss:.2f}.h5",
+        ##   save_top_k=1,
+        ##  mode='max'),
         EarlyStopping(monitor='val_loss')
     ]
 
-    #logger   = TensorBoardLogger("tb_logs", name="my_model")
     trainer  = Trainer(gpus=1, max_epochs=10,callbacks=callbacks)
     model    = AutoEncoder()
     
-    data     = DataModule(coords_file, wsi_file, model_dict, train_transform = train_transform, val_transform = val_transform, batch_size=8)
+    data     = DataModule(coords_file, wsi_file, train_transform = train_transform, val_transform = val_transform, batch_size=2)
     trainer.fit(model, data)
     
     ## Testing

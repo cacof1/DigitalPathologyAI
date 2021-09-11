@@ -28,4 +28,14 @@ The first step to run the different code is to run the TileDataset.sh shell file
 source TileDataset.sh SlideDirectory/
 ```
 
-This will create a folder (Preprocessing) containing mask, patches, and stitches for each slides with the coords of each tile of interest within each slide.
+This will, in order, do:
+
+Markup : 1. create a folder (Preprocessing) containing mask, patches, wsi, and stitches 
+              1. A folder containing, for each slide, jpg showing the mask separation between tiles and background (mask)
+              2. A folder containing, for each slide, h5 files containgCoords of each tile of interest within each slide (patches)
+              3. A folder containing, for each slide, jpg showing a stitches of individual tiles at low resolution (stitches)
+	      4. A folder containing all of the wsi slides (moved there to minimize space usage) (wsi)
+         2. Apply a code to extract the coords of only the patches that contain tumors within a sub-directory (patches_tumor)
+
+
+	 3. To be implemented: Transform the extracted tumor tiles in feature representation
