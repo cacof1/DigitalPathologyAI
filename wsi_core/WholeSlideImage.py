@@ -26,7 +26,7 @@ class WholeSlideImage(object):
         Args:
             path (str): fullpath to WSI file
         """
-
+        print(path, type(path))
         self.name = ".".join(path.split("/")[-1].split('.')[:-1])
         self.wsi = openslide.open_slide(path)
         self.level_downsamples = self._assertLevelDownsamples()

@@ -45,19 +45,27 @@ from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator
 ## Module - Models
 from Model.TumorClassifier import ImageClassifier
 
-##First create a master loader
 
+
+
+##First create a master loader
 wsi_file, coords_file = LoadFileParameter(sys.argv[1])
+coords_file           = coords_file[:100]
+
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),    
+])
+
 
 ## Load the previous  model
 model = ImageClassifier.load_from_checkpoint(sys.argv[2])
 
 ## Now train
-trainer = pl.Trainer(gpus=1) ## Yuck
-dataset = DataLoader(DataGenerator(coords_file, wsi_file), batch_size=80, num_workers=10)
-preds   = trainer.predict(model,dataset)
-print(coords_file)
-print(len(preds))
+trainer = pl.Trainer(gpus=1) ## Yuck but ok, it contain all the generalisation
+dataset = DataLoader(DataGenerator(coords_file, wsi_file, transform = transform, inference = True), batch_size=80, num_workers=10)
+preds   = trainer.predict(model,dataset).cpu().squeeze()
+print(preds.shape, preds[0])
 
 ## Now we save to hdf5
 Path("Preprocessing/patches_tumor").mkdir(parents=True, exist_ok=True)

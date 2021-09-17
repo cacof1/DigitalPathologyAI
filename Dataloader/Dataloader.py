@@ -22,14 +22,15 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 class DataGenerator(torch.utils.data.Dataset):
-    def __init__(self, coords_file, wsi_file, transform=None):
+    def __init__(self, coords_file, wsi_file, inference = False, transform=None, target_transform = None):
         super().__init__()
-        self.transform    = transform
-        self.coords_file  = coords_file
-        self.vis_level    = 0
-        self.wsi_file     = wsi_file
-        self.dim          = (256,256)
-        
+        self.transform        = transform
+        self.target_transform = target_transform
+        self.coords_file      = coords_file
+        self.wsi_file         = wsi_file
+        self.vis_level        = 0        
+        self.dim              = (256,256)
+        self.inference        = inference
     def __len__(self):
         return int(self.coords_file.shape[0]) ## / 100 for quick processing
 
@@ -42,9 +43,11 @@ class DataGenerator(torch.utils.data.Dataset):
         #image, H, E = normalizeStaining(image)
 
         ## Transform
-        if self.transform: image  = self.transform(image)
-        
-        return image, label
+        if self.transform:        image  = self.transform(image)
+        if self.target_transform: label  = self.target_transform(label)
+
+        if(self.inference): return image
+        else: return image,label
 
 
 ### DataLoader

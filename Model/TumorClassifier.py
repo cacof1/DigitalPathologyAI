@@ -55,6 +55,7 @@ class ImageClassifier(pl.LightningModule):
         self.feature_extractor.eval()
         with torch.no_grad():
             representations = self.feature_extractor(x).flatten(1)
+
         #x = self.layer_1(representations)
         #x = F.relu(x)
         #x = self.layer_2(x)
@@ -67,6 +68,7 @@ class ImageClassifier(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # return the loss given a batch: this has a computational graph attached to it: optimization
         image, labels = batch
+        print(image.size())
         logits, features = self(image)
         loss = F.cross_entropy(logits, labels) 
         acc = accuracy(logits, labels)
@@ -78,7 +80,7 @@ class ImageClassifier(pl.LightningModule):
         return loss
      
     def validation_step(self, batch, batch_idx):
-
+        
         image, labels = batch
         logits, features = self(image)
         loss = F.cross_entropy(logits, labels) 
@@ -104,7 +106,9 @@ class ImageClassifier(pl.LightningModule):
         return loss
     
     def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):
-        return self(batch)
+        print("hello")
+        image, label = batch
+        return self(image)
 
     def configure_optimizers(self):
         # return optimizer

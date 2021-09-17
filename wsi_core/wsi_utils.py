@@ -15,6 +15,7 @@ def isWhitePatch(patch, satThresh=5):
 def isBlackPatch(patch, rgbThresh=40):
     return True if np.all(np.mean(patch, axis = (0,1)) < rgbThresh) else False
 
+"""
 def isBlackPatch_S(patch, rgbThresh=20, percentage=0.05):
     num_pixels = patch.size[0] * patch.size[1]
     return True if np.all(np.array(patch) < rgbThresh, axis=(2)).sum() > num_pixels * percentage else False
@@ -22,7 +23,7 @@ def isBlackPatch_S(patch, rgbThresh=20, percentage=0.05):
 def isWhitePatch_S(patch, rgbThresh=220, percentage=0.2):
     num_pixels = patch.size[0] * patch.size[1]
     return True if np.all(np.array(patch) > rgbThresh, axis=(2)).sum() > num_pixels * percentage else False
-
+"""
 def coord_generator(x_start, x_end, x_step, y_start, y_end, y_step, args_dict=None):
     for x in range(x_start, x_end, x_step):
         for y in range(y_start, y_end, y_step):
@@ -317,9 +318,6 @@ def SamplePatches(coords_file_path, save_file_path, wsi_object,
         patch = wsi_object.wsi.read_region(coord, patch_level, tuple([patch_size, patch_size])).convert('RGB')
         if custom_downsample > 1:
             patch = patch.resize(tuple(target_patch_size))
-
-        # if isBlackPatch_S(patch, rgbThresh=20, percentage=0.05) or isWhitePatch_S(patch, rgbThresh=220, percentage=0.25):
-        #     continue
 
         if stitch:
             canvas.paste_patch(patch)
