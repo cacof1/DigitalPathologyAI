@@ -18,7 +18,6 @@ import h5py
 import sys
 
 from wsi_core.WholeSlideImage import WholeSlideImage
-from wsi_core.wsi_utils import savePatchIter_bag_hdf5, initialize_hdf5_bag, coord_generator, save_hdf5, sample_indices, screen_coords, isBlackPatch, isWhitePatch, to_percentiles
 from PIL import Image
 from torchvision import transforms
 import matplotlib.pyplot as plt
@@ -44,9 +43,6 @@ from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator
 
 ## Module - Models
 from Model.TumorClassifier import ImageClassifier
-
-
-
 
 ##First create a master loader
 wsi_file, coords_file = LoadFileParameter(sys.argv[1])

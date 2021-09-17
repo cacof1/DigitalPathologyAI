@@ -5,20 +5,19 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import multiprocessing as mp
 import cv2
+import pandas as pd 
 import matplotlib.pyplot as plt
 import numpy as np
 import openslide
 from PIL import Image
 import pdb
-import h5py
 import math
-from wsi_core.wsi_utils import savePatchIter_bag_hdf5, initialize_hdf5_bag, coord_generator, save_hdf5, sample_indices, screen_coords, isBlackPatch, isWhitePatch, to_percentiles
+from wsi_core.wsi_utils import coord_generator, sample_indices, screen_coords, isBlackPatch, isWhitePatch, to_percentiles
 import itertools
 from wsi_core.util_classes import isInContourV1, isInContourV2, isInContourV3_Easy, isInContourV3_Hard, Contour_Checking_fn
 import pickle
 
 Image.MAX_IMAGE_PIXELS = 933120000
-
 class WholeSlideImage(object):
     def __init__(self, path):
 
@@ -26,7 +25,6 @@ class WholeSlideImage(object):
         Args:
             path (str): fullpath to WSI file
         """
-        print(path, type(path))
         self.name = ".".join(path.split("/")[-1].split('.')[:-1])
         self.wsi = openslide.open_slide(path)
         self.level_downsamples = self._assertLevelDownsamples()
@@ -35,53 +33,6 @@ class WholeSlideImage(object):
         self.contours_tissue = None
         self.contours_tumor = None
         self.hdf5_file = None
-
-    def getOpenSlide(self):
-        return self.wsi
-
-    def initXML(self, xml_path):
-        def _createContour(coord_list):
-            return np.array([[[int(float(coord.attributes['X'].value)), 
-                               int(float(coord.attributes['Y'].value))]] for coord in coord_list], dtype = 'int32')
-
-        xmldoc = minidom.parse(xml_path)
-        annotations = [anno.getElementsByTagName('Coordinate') for anno in xmldoc.getElementsByTagName('Annotation')]
-        self.contours_tumor  = [_createContour(coord_list) for coord_list in annotations]
-        self.contours_tumor = sorted(self.contours_tumor, key=cv2.contourArea, reverse=True)
-
-    def initTxt(self,annot_path):
-        def _create_contours_from_dict(annot):
-            all_cnts = []
-            for idx, annot_group in enumerate(annot):
-                contour_group = annot_group['coordinates']
-                if annot_group['type'] == 'Polygon':
-                    for idx, contour in enumerate(contour_group):
-                        contour = np.array(contour).astype(np.int32).reshape(-1,1,2)
-                        all_cnts.append(contour) 
-
-                else:
-                    for idx, sgmt_group in enumerate(contour_group):
-                        contour = []
-                        for sgmt in sgmt_group:
-                            contour.extend(sgmt)
-                        contour = np.array(contour).astype(np.int32).reshape(-1,1,2)    
-                        all_cnts.append(contour) 
-
-            return all_cnts
-        
-        with open(annot_path, "r") as f:
-            annot = f.read()
-            annot = eval(annot)
-        self.contours_tumor  = _create_contours_from_dict(annot)
-        self.contours_tumor = sorted(self.contours_tumor, key=cv2.contourArea, reverse=True)
-
-    def initSegmentation(self, mask_file):
-        # load segmentation results from pickle file
-        loader = open(mask_file,'rb')
-        asset_dict = pickle.load(loader)
-        loader.close()        
-        self.holes_tissue = asset_dict['holes']
-        self.contours_tissue = asset_dict['tissue']
 
     def saveSegmentation(self, mask_file):
         # save segmentation results using pickle
@@ -124,8 +75,7 @@ class WholeSlideImage(object):
                     all_holes.append(holes)
 
 
-            foreground_contours = [contours[cont_idx] for cont_idx in filtered]
-            
+            foreground_contours = [contours[cont_idx] for cont_idx in filtered]            
             hole_contours = []
 
             for hole_ids in all_holes:
@@ -150,10 +100,8 @@ class WholeSlideImage(object):
         
        
         # Thresholding
-        if use_otsu:
-            _, img_otsu = cv2.threshold(img_med, 0, sthresh_up, cv2.THRESH_OTSU+cv2.THRESH_BINARY)
-        else:
-            _, img_otsu = cv2.threshold(img_med, sthresh, sthresh_up, cv2.THRESH_BINARY)
+        if use_otsu: _, img_otsu = cv2.threshold(img_med, 0, sthresh_up, cv2.THRESH_OTSU+cv2.THRESH_BINARY)
+        else: _, img_otsu = cv2.threshold(img_med, sthresh, sthresh_up, cv2.THRESH_BINARY)
 
         # Morphological closing
         if close > 0:
@@ -173,15 +121,6 @@ class WholeSlideImage(object):
 
         self.contours_tissue = self.scaleContourDim(foreground_contours, scale)
         self.holes_tissue = self.scaleHolesDim(hole_contours, scale)
-
-        #exclude_ids = [0,7,9]
-        if len(keep_ids) > 0:
-            contour_ids = set(keep_ids) - set(exclude_ids)
-        else:
-            contour_ids = set(np.arange(len(self.contours_tissue))) - set(exclude_ids)
-
-        self.contours_tissue = [self.contours_tissue[i] for i in contour_ids]
-        self.holes_tissue = [self.holes_tissue[i] for i in contour_ids]
 
     def visWSI(self, vis_level=0, color = (0,255,0), hole_color = (0,0,255), annot_color=(255,0,0), 
                     line_thickness=250, max_size=None, top_left=None, bot_right=None, custom_downsample=1, view_slide_only=False,
@@ -240,101 +179,6 @@ class WholeSlideImage(object):
        
         return img
 
-
-    def createPatches_bag_hdf5(self, save_path, patch_level=0, patch_size=256, step_size=256, save_coord=True, **kwargs):
-        contours = self.contours_tissue
-        contour_holes = self.holes_tissue
-
-        print("Creating patches for: ", self.name, "...",)
-        elapsed = time.time()
-        for idx, cont in enumerate(contours):
-            patch_gen = self._getPatchGenerator(cont, idx, patch_level, save_path, patch_size, step_size, **kwargs)
-            
-            if self.hdf5_file is None:
-                try:
-                    first_patch = next(patch_gen)
-
-                # empty contour, continue
-                except StopIteration:
-                    continue
-
-                file_path = initialize_hdf5_bag(first_patch, save_coord=save_coord)
-                self.hdf5_file = file_path
-
-            for patch in patch_gen:
-                savePatchIter_bag_hdf5(patch)
-
-        return self.hdf5_file
-
-
-    def _getPatchGenerator(self, cont, cont_idx, patch_level, save_path, patch_size=256, step_size=256, custom_downsample=1,
-        white_black=True, white_thresh=15, black_thresh=50, contour_fn='four_pt', use_padding=True):
-        start_x, start_y, w, h = cv2.boundingRect(cont) if cont is not None else (0, 0, self.level_dim[patch_level][0], self.level_dim[patch_level][1])
-        print("Bounding Box:", start_x, start_y, w, h)
-        print("Contour Area:", cv2.contourArea(cont))
-        
-        if custom_downsample > 1:
-            assert custom_downsample == 2 
-            target_patch_size = patch_size
-            patch_size = target_patch_size * 2
-            step_size = step_size * 2
-            print("Custom Downsample: {}, Patching at {} x {}, But Final Patch Size is {} x {}".format(custom_downsample, patch_size, patch_size, 
-                target_patch_size, target_patch_size))
-
-        patch_downsample = (int(self.level_downsamples[patch_level][0]), int(self.level_downsamples[patch_level][1]))
-        ref_patch_size = (patch_size*patch_downsample[0], patch_size*patch_downsample[1])
-        
-        step_size_x = step_size * patch_downsample[0]
-        step_size_y = step_size * patch_downsample[1]
-        
-        if isinstance(contour_fn, str):
-            if contour_fn == 'four_pt':
-                cont_check_fn = isInContourV3_Easy(contour=cont, patch_size=ref_patch_size[0], center_shift=0.5)
-            elif contour_fn == 'four_pt_hard':
-                cont_check_fn = isInContourV3_Hard(contour=cont, patch_size=ref_patch_size[0], center_shift=0.5)
-            elif contour_fn == 'center':
-                cont_check_fn = isInContourV2(contour=cont, patch_size=ref_patch_size[0])
-            elif contour_fn == 'basic':
-                cont_check_fn = isInContourV1(contour=cont)
-            else:
-                raise NotImplementedError
-        else:
-            assert isinstance(contour_fn, Contour_Checking_fn)
-            cont_check_fn = contour_fn
-
-        img_w, img_h = self.level_dim[0]
-        if use_padding:
-            stop_y = start_y+h
-            stop_x = start_x+w
-        else:
-            stop_y = min(start_y+h, img_h-ref_patch_size[1])
-            stop_x = min(start_x+w, img_w-ref_patch_size[0])
-
-        count = 0
-        for y in range(start_y, stop_y, step_size_y):
-            for x in range(start_x, stop_x, step_size_x):
-
-                if not self.isInContours(cont_check_fn, (x,y), self.holes_tissue[cont_idx], ref_patch_size[0]): #point not inside contour and its associated holes
-                    continue    
-                
-                count+=1
-                patch_PIL = self.wsi.read_region((x,y), patch_level, (patch_size, patch_size)).convert('RGB')
-                if custom_downsample > 1:
-                    patch_PIL = patch_PIL.resize((target_patch_size, target_patch_size))
-                
-                if white_black:
-                    if isBlackPatch(np.array(patch_PIL), rgbThresh=black_thresh) or isWhitePatch(np.array(patch_PIL), satThresh=white_thresh): 
-                        continue
-
-                patch_info = {'x':x // (patch_downsample[0] * custom_downsample), 'y':y // (patch_downsample[1] * custom_downsample), 'cont_idx':cont_idx, 'patch_level':patch_level, 
-                'downsample': self.level_downsamples[patch_level], 'downsampled_level_dim': tuple(np.array(self.level_dim[patch_level])//custom_downsample), 'level_dim': self.level_dim[patch_level],
-                'patch_PIL':patch_PIL, 'name':self.name, 'save_path':save_path}
-
-                yield patch_info
-
-        
-        print("patches extracted: {}".format(count))
-
     @staticmethod
     def isInHoles(holes, pt, patch_size):
         for hole in holes:
@@ -371,32 +215,28 @@ class WholeSlideImage(object):
         return level_downsamples
 
     def process_contours(self, save_path, patch_level=0, patch_size=256, step_size=256, **kwargs):
-        save_path_hdf5 = os.path.join(save_path, str(self.name) + '.h5')
+        df = pd.DataFrame()
         print("Creating patches for: ", self.name, "...",)
-        elapsed = time.time()
         n_contours = len(self.contours_tissue)
         print("Total number of contours to process: ", n_contours)
         fp_chunk_size = math.ceil(n_contours * 0.05)
         init = True
         for idx, cont in enumerate(self.contours_tissue):
-            if (idx + 1) % fp_chunk_size == fp_chunk_size:
-                print('Processing contour {}/{}'.format(idx, n_contours))
-            
+            if (idx + 1) % fp_chunk_size == fp_chunk_size: print('Processing contour {}/{}'.format(idx, n_contours))            
             asset_dict, attr_dict = self.process_contour(cont, self.holes_tissue[idx], patch_level, save_path, patch_size, step_size, **kwargs)
+            print(attr_dict)
             if len(asset_dict) > 0:
-                if init:
-                    save_hdf5(save_path_hdf5, asset_dict, attr_dict, mode='w')
-                    init = False
-                else:
-                    save_hdf5(save_path_hdf5, asset_dict, mode='a')
-
-        return self.hdf5_file
-
+                df_temp = pd.DataFrame(asset_dict["coords"],columns=["coords_x","coords_y"])#, attr_dict["coords"])
+                df_temp["contours"] = idx
+                df = df.append(df_temp)
+                print(df)
+        df.to_csv(os.path.join(save_path, str(self.name) + '.csv'))
+        return df
 
     def process_contour(self, cont, contour_holes, patch_level, save_path, patch_size = 256, step_size = 256,
         contour_fn='four_pt', use_padding=True, top_left=None, bot_right=None):
-        start_x, start_y, w, h = cv2.boundingRect(cont) if cont is not None else (0, 0, self.level_dim[patch_level][0], self.level_dim[patch_level][1])
 
+        start_x, start_y, w, h = cv2.boundingRect(cont) if cont is not None else (0, 0, self.level_dim[patch_level][0], self.level_dim[patch_level][1])
         patch_downsample = (int(self.level_downsamples[patch_level][0]), int(self.level_downsamples[patch_level][1]))
         ref_patch_size = (patch_size*patch_downsample[0], patch_size*patch_downsample[1])
         
@@ -654,7 +494,6 @@ class WholeSlideImage(object):
                 # rewrite image block
                 img[coord[1]:coord[1]+patch_size[1], coord[0]:coord[0]+patch_size[0]] = img_block.copy()
         
-        #return Image.fromarray(img) #overlay
         print('Done')
         del overlay
 
