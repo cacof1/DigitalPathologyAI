@@ -178,37 +178,24 @@ def CreateDataset(filelist, dataset_type = 'TumourClassification'):
             'MitosisDetection': return dataset with colunms of ['coords_x','coords_y','x_min','x_max','y_min','y_max','label','patient_id']
              
     '''
-    
-    if dataset_type == 'TumourClassification':
+    dfs = []
+    for filename in filelist:
+        coords_file = filename + '.csv'
+        wsi_file = filename + '.svs'
         
-        dfs = []
-        
-        for filename in filelist:
-            coords_file = filename + '.csv'
-            wsi_file = filename + '.svs'
+        if dataset_type == 'TumourClassification':
             json_file = filename + 'TumourContour.json'
-            
             df = AnnotationReader(coords_file,wsi_file,json_file,annotation_type='TumourContour').ReadTumourContour()
-            dfs.append(df)
             
-        dataset = pd.concat(dfs)
-        dataset.reset_index(inplace=True,drop=True)
-    
-    if dataset_type == 'MitosisDetection':
-        
-        dfs = []
-        
-        for filename in filelist:
-            coords_file = filename + '.csv'
-            wsi_file = filename + '.svs'
+        elif dataset_type == 'MitosisDetection':
             json_file = filename + 'MitoticFigures.json'
-            
             df = AnnotationReader(coords_file,wsi_file,json_file,annotation_type='MitoticFigures').ReadMitoticFigures()
-            dfs.append(df)
+            
+        dfs.append(df)
         
-        dataset = pd.concat(dfs)
-        dataset.reset_index(inplace=True,drop=True) 
-        
+    dataset = pd.concat(dfs)
+    dataset.reset_index(inplace=True,drop=True)                
+
     return dataset
             
         
