@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sat Sep 18 09:55:36 2021
-
 @author: zhuoy
 """
 import sys
@@ -13,7 +12,6 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 import geojson
 import random
 import pickle
-
 
 class AnnotationReader:
     
@@ -85,7 +83,7 @@ class AnnotationReader:
             #np.save('TumourousMasks{}_{}'.format(self.coords_file['patient_id'][0],self.dim[0]), masks)
             
     
-    def ReadMitoticFigure(self):   
+    def ReadMitoticFigures(self):   
         #Create bounding boxes for patches with mitotic figure
         if self.annotation_type != 'MitoticFigure':       
             raise Exception('AnotationTypeError')
@@ -168,8 +166,7 @@ class AnnotationReader:
             #print('mitosis{}_{}.csv SAVED'.format(self.coords_file['patient_id'][0],self.dim[0]))
             
             
-            
-            
+                     
 def CreateDataset(filelist, dataset_type = 'TumourClassification'):
     
     '''
@@ -191,7 +188,7 @@ def CreateDataset(filelist, dataset_type = 'TumourClassification'):
             wsi_file = filename + '.svs'
             json_file = filename + 'TumourContour.json'
             
-            df = AnnotationReader(coords_file,wsi_file,json_file,annotation_type='TumourContour')
+            df = AnnotationReader(coords_file,wsi_file,json_file,annotation_type='TumourContour').ReadTumourContour()
             dfs.append(df)
             
         dataset = pd.concat(dfs)
@@ -206,7 +203,7 @@ def CreateDataset(filelist, dataset_type = 'TumourClassification'):
             wsi_file = filename + '.svs'
             json_file = filename + 'MitoticFigures.json'
             
-            df = AnnotationReader(coords_file,wsi_file,json_file,annotation_type='MitoticFigures')
+            df = AnnotationReader(coords_file,wsi_file,json_file,annotation_type='MitoticFigures').ReadMitoticFigures()
             dfs.append(df)
         
         dataset = pd.concat(dfs)
