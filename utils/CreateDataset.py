@@ -179,7 +179,7 @@ def CreateDataset(filelist, dataset_type = 'TumourClassification'):
              
     '''
     
-    if dataset_type = 'TumourClassification':
+    if dataset_type == 'TumourClassification':
         
         dfs = []
         
@@ -194,7 +194,7 @@ def CreateDataset(filelist, dataset_type = 'TumourClassification'):
         dataset = pd.concat(dfs)
         dataset.reset_index(inplace=True,drop=True)
     
-    if dataset_type = 'MitosisDetection':
+    if dataset_type == 'MitosisDetection':
         
         dfs = []
         
