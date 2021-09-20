@@ -31,8 +31,7 @@ if __name__ == '__main__':
     mask_save_dir = os.path.join(args.save_dir, 'masks')
     stitch_save_dir = os.path.join(args.save_dir, 'stitches')
     ### End of parser
-    
-    
+       
     if args.process_list: process_list = os.path.join(args.save_dir, args.process_list)
     else: process_list = None
     
@@ -99,6 +98,7 @@ if __name__ == '__main__':
         config.update(vis_params)
         
         print(config)
+
         ### Segmentation
         WSI_object.segmentTissue(**seg_params, filter_params=filter_params)
         mask = WSI_object.visWSI(**vis_params)
@@ -110,6 +110,6 @@ if __name__ == '__main__':
         dataframe = WSI_object.process_contours(**patch_params)
 
         ### Stitching
-        #stitchmap = StitchCoords(dataframe, config, WSI_object, downscale=64, bg_color=(0,0,0), alpha=-1, draw_grid=False)
-        #stitchmap.save(os.path.join(stitch_save_dir, slide_id+'.jpg'))
+        stitchmap = StitchCoords(dataframe, config, WSI_object, downscale=64, bg_color=(0,0,0), alpha=-1, draw_grid=False)
+        stitchmap.save(os.path.join(stitch_save_dir, slide_id+'.jpg'))
 

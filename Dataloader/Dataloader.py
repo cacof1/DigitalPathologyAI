@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 import pandas as pd
 import os
+from pathlib import Path
 
 ##utils
 from utils.StainNorm import normalizeStaining
@@ -15,7 +16,7 @@ import torchvision.models as models
 import numpy as np
 import torch
 import openslide
-import h5py, sys, glob
+import sys, glob
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
@@ -64,7 +65,6 @@ class DataModule(LightningDataModule):
         self.test_data       = []
 
     def setup(self, stage):
-
         ids_split          = np.round(np.array([0.7, 0.8, 1.0])*len(self.coords_file)).astype(np.int32)
         self.train_data    = DataGenerator(self.coords_file[:ids_split[0]], self.wsi_file, self.train_transform)
         self.val_data      = DataGenerator(self.coords_file[ids_split[0]:ids_split[1]], self.wsi_file,  self.val_transform)
@@ -78,19 +78,19 @@ class DataModule(LightningDataModule):
 
 def LoadFileParameter(preprocessingfolder):
     CoordsPath = os.path.join(preprocessingfolder,"patches")
-    WSIPath      = os.path.join(preprocessingfolder,"wsi")
+    WSIPath    = os.path.join(preprocessingfolder,"wsi")
     wsi_file = {}
     coords_file = pd.DataFrame()
-    for filenb,filename in enumerate(glob.glob(CoordsPath+"/*.h5")):
-        coords          = np.array(h5py.File(filename, "r")['coords'])
-        patient_id      = filename.split("/")[-1][:-3]
+    source    = Path(CoordsPath).glob("*.csv")
+    for filenb,filename in enumerate(source):        
+        coords          = pd.read_csv(filename,index_col=0)
+        patient_id      = filename.stem
         wsi_file_object = WholeSlideImage(WSIPath + '/{}.svs'.format(patient_id))
-
-        coords_file_temp               = pd.DataFrame(coords,columns=['coords_x','coords_y'])
-        coords_file_temp['patient_id'] = patient_id
-        coords_file_temp['label']      = 0  ## Temporary
+        coords['patient_id'] = patient_id
+        coords['label']      = 0  
         wsi_file[patient_id] = wsi_file_object
-        if(filenb==0): coords_file = coords_file_temp
-        else: coords_file = coords_file.append(coords_file_temp)
+
+        if(filenb==0): coords_file = coords
+        else: coords_file = coords_file.append(coords)
 
     return wsi_file, coords_file

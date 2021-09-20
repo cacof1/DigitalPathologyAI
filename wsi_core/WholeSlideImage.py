@@ -224,12 +224,10 @@ class WholeSlideImage(object):
         for idx, cont in enumerate(self.contours_tissue):
             if (idx + 1) % fp_chunk_size == fp_chunk_size: print('Processing contour {}/{}'.format(idx, n_contours))            
             asset_dict, attr_dict = self.process_contour(cont, self.holes_tissue[idx], patch_level, save_path, patch_size, step_size, **kwargs)
-            print(attr_dict)
             if len(asset_dict) > 0:
                 df_temp = pd.DataFrame(asset_dict["coords"],columns=["coords_x","coords_y"])#, attr_dict["coords"])
                 df_temp["contours"] = idx
                 df = df.append(df_temp)
-                print(df)
         df.to_csv(os.path.join(save_path, str(self.name) + '.csv'))
         return df
 

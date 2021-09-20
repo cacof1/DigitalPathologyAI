@@ -112,62 +112,26 @@ def DrawMap(canvas, patch_dset, coords, patch_size, indices=None, verbose=1, dra
 
 def DrawMapFromCoords(canvas, wsi_object, df, patch_size, vis_level, indices=None, verbose=1, draw_grid=True):
     downsamples = wsi_object.wsi.level_downsamples[vis_level]
-    #if indices is None:
-    #    indices = np.arange(len(coords))
-    #total = len(indices)
-    #if verbose > 0:
-    #    ten_percent_chunk = math.ceil(total * 0.1)
+    
+    total = len(df)
+    if verbose > 0: ten_percent_chunk = math.ceil(total * 0.1)
         
     patch_size = tuple(np.ceil((np.array(patch_size)/np.array(downsamples))).astype(np.int32))
     print('downscaled patch size: {}x{}'.format(patch_size[0], patch_size[1]))
-    
-    #for idx in range(total):
-    #if verbose > 0:
-    #    if idx % ten_percent_chunk == 0:
-    #        print('progress: {}/{} stitched'.format(idx, total))
+    coord_list = df[["coords_x","coords_y"]]
+    for idx,coord in df[["coords_x","coords_y"]].iterrows():
+        if verbose > 0:
+            if idx % ten_percent_chunk == 0:
+                print('progress: {}/{} stitched'.format(idx, total))
             
-    coord = df[["coords_x","coords_y"]]
-    #coord = coords[patch_id]
-    patch = np.array(wsi_object.wsi.read_region(tuple(coord), vis_level, patch_size).convert("RGB"))
-    coord = np.ceil(coord / downsamples).astype(np.int32)
-    canvas_crop_shape = canvas[coord[1]:coord[1]+patch_size[1], coord[0]:coord[0]+patch_size[0], :3].shape[:2]
-    canvas[coord[1]:coord[1]+patch_size[1], coord[0]:coord[0]+patch_size[0], :3] = patch[:canvas_crop_shape[0], :canvas_crop_shape[1], :]
+        patch = np.array(wsi_object.wsi.read_region(tuple(coord), vis_level, patch_size).convert("RGB"))
+        coord = np.ceil(coord / downsamples).astype(np.int32)
+        canvas_crop_shape = canvas[coord[1]:coord[1]+patch_size[1], coord[0]:coord[0]+patch_size[0], :3].shape[:2]
+        canvas[coord[1]:coord[1]+patch_size[1], coord[0]:coord[0]+patch_size[0], :3] = patch[:canvas_crop_shape[0], :canvas_crop_shape[1], :]
     if draw_grid:
         DrawGrid(canvas, coord, patch_size)
 
     return Image.fromarray(canvas)
-
-def StitchPatches(hdf5_file_path, downscale=16, draw_grid=False, bg_color=(0,0,0), alpha=-1):
-    file = h5py.File(hdf5_file_path, 'r')
-    dset = file['imgs']
-    coords = file['coords'][:]
-    if 'downsampled_level_dim' in dset.attrs.keys():
-        w, h = dset.attrs['downsampled_level_dim']
-    else:
-        w, h = dset.attrs['level_dim']
-    print('original size: {} x {}'.format(w, h))
-    w = w // downscale
-    h = h //downscale
-    coords = (coords / downscale).astype(np.int32)
-    print('downscaled size for stiching: {} x {}'.format(w, h))
-    print('number of patches: {}'.format(len(dset)))
-    img_shape = dset[0].shape
-    print('patch shape: {}'.format(img_shape))
-    downscaled_shape = (img_shape[1] // downscale, img_shape[0] // downscale)
-
-    if w*h > Image.MAX_IMAGE_PIXELS: 
-        raise Image.DecompressionBombError("Visualization Downscale %d is too large" % downscale)
-    
-    if alpha < 0 or alpha == -1:
-        heatmap = Image.new(size=(w,h), mode="RGB", color=bg_color)
-    else:
-        heatmap = Image.new(size=(w,h), mode="RGBA", color=bg_color + (int(255 * alpha),))
-    
-    heatmap = np.array(heatmap)
-    heatmap = DrawMap(heatmap, dset, coords, downscaled_shape, indices=None, draw_grid=draw_grid)
-    
-    file.close()
-    return heatmap
 
 def StitchCoords(df, config, wsi_object, downscale=16, draw_grid=False, bg_color=(0,0,0), alpha=-1):
     wsi = wsi_object.wsi
