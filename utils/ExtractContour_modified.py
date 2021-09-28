@@ -33,6 +33,7 @@ for n in range(len(contours)):
 
     points = np.array(contours[n]['geometry']['coordinates'])
     points_downsamples = np.int32(points/wsi_object.wsi.level_downsamples[vis_level])
+    points_downsamples = np.squeeze(points_downsamples)
     points_downsamples[:,[0,1]] = points_downsamples[:,[1,0]]
     cv2.fillConvexPoly(mask, points_downsamples, (1))  
 
