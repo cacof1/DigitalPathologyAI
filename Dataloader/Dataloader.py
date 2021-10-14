@@ -33,23 +33,26 @@ class DataGenerator(torch.utils.data.Dataset):
         self.dim              = (256,256)
         self.inference        = inference
     def __len__(self):
-        return int(self.coords_file.shape[0]) ## / 100 for quick processing
+        return int(self.coords_file.shape[0]/10) ## / 100 for quick processing
 
     def __getitem__(self, id):
         # load image
-        coords_x, coords_y, patient_id, label = self.coords_file.iloc[id,:]
-        image = np.array(self.wsi_file[patient_id].wsi.read_region([coords_x, coords_y], self.vis_level, self.dim).convert("RGB"))
+        data = self.coords_file.iloc[id,:]
+        image = np.array(self.wsi_file[data["patient_id"]].wsi.read_region([data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
+        label = data["label"]
 
-        ## Normalization        
-        #image, H, E = normalizeStaining(image)
+        ## Normalization -- not great so far, but buggy otherwise
+        try:
+            image, H, E = normalizeStaining(image)
+        except:
+            pass
 
-        ## Transform
-        if self.transform:        image  = self.transform(image)
+        ## Transform - Data Augmentation
+        if self.transform: image  = self.transform(image)
         if self.target_transform: label  = self.target_transform(label)
 
         if(self.inference): return image
         else: return image,label
-
 
 ### DataLoader
 class DataModule(LightningDataModule):
@@ -63,18 +66,17 @@ class DataModule(LightningDataModule):
         self.train_data      = []
         self.val_data        = []
         self.test_data       = []
+        self.inference       = False
 
     def setup(self, stage):
         ids_split          = np.round(np.array([0.7, 0.8, 1.0])*len(self.coords_file)).astype(np.int32)
-        self.train_data    = DataGenerator(self.coords_file[:ids_split[0]], self.wsi_file, self.train_transform)
-        self.val_data      = DataGenerator(self.coords_file[ids_split[0]:ids_split[1]], self.wsi_file,  self.val_transform)
-        self.test_data     = DataGenerator(self.coords_file[ids_split[1]:ids_split[-1]], self.wsi_file,  self.val_transform)
+        self.train_data    = DataGenerator(self.coords_file[:ids_split[0]], self.wsi_file, self.inference, self.train_transform)
+        self.val_data      = DataGenerator(self.coords_file[ids_split[0]:ids_split[1]], self.wsi_file,  self.inference,  self.val_transform)
+        self.test_data     = DataGenerator(self.coords_file[ids_split[1]:ids_split[-1]], self.wsi_file, self.inference,  self.val_transform)
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=10)
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
     def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
-
-
 
 def LoadFileParameter(preprocessingfolder):
     CoordsPath = os.path.join(preprocessingfolder,"patches")
@@ -94,3 +96,11 @@ def LoadFileParameter(preprocessingfolder):
         else: coords_file = coords_file.append(coords)
 
     return wsi_file, coords_file
+def SaveFileParameter(df, preprocessingfolder, column_to_add, label_to_add):
+    CoordsPath = Path(preprocessingfolder,"patches")
+    CoordsPath.mkdir(parents=True, exist_ok=True)
+    df[label_to_add] = column_to_add
+    for patient_id, df_split in df.groupby(df.patient_id):
+        TotalPath = Path(CoordsPath, patient_id+".csv")
+        df_split.to_csv(str(TotalPath))
+
