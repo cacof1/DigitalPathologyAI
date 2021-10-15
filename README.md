@@ -39,3 +39,5 @@ Markup : 1. create a folder (Preprocessing) containing mask, patches, wsi, and s
 
 
 	 3. To be implemented: Transform the extracted tumor tiles in feature representation
+	 
+![image](https://user-images.githubusercontent.com/44832648/137453431-ebe11082-40f9-4b23-937e-41a78a5949e1.png)
