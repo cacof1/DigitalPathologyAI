@@ -40,4 +40,6 @@ Markup : 1. create a folder (Preprocessing) containing mask, patches, wsi, and s
 
 	 3. To be implemented: Transform the extracted tumor tiles in feature representation
 	 
+
+The data processing workflow is displayed below, where the tumorous parts in the whole slides images are used as region of interest for developing multiple applications including tumour subtype classification, mitosis detection and unsupervised culstering.  	 
 ![image](https://user-images.githubusercontent.com/44832648/137453431-ebe11082-40f9-4b23-937e-41a78a5949e1.png)
