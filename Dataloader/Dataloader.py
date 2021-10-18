@@ -23,29 +23,29 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 class DataGenerator(torch.utils.data.Dataset):
-    def __init__(self, coords_file, wsi_file, inference = False, transform=None, target_transform = None):
+    def __init__(self, coords_file, wsi_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None):
         super().__init__()
         self.transform        = transform
         self.target_transform = target_transform
         self.coords_file      = coords_file
         self.wsi_file         = wsi_file
-        self.vis_level        = 0        
-        self.dim              = (256,256)
+        self.vis_level        = vis_level        
+        self.dim              = dim
         self.inference        = inference
     def __len__(self):
-        return int(self.coords_file.shape[0]/10) ## / 100 for quick processing
+        return int(self.coords_file.shape[0]/100) ## / 100 for quick processing
 
     def __getitem__(self, id):
         # load image
-        data = self.coords_file.iloc[id,:]
+        data  = self.coords_file.iloc[id,:]
         image = np.array(self.wsi_file[data["patient_id"]].wsi.read_region([data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
         label = data["label"]
 
         ## Normalization -- not great so far, but buggy otherwise
-        try:
-            image, H, E = normalizeStaining(image)
-        except:
-            pass
+        #try:
+        #    image, H, E = normalizeStaining(image)
+        #except:
+        #    pass
 
         ## Transform - Data Augmentation
         if self.transform: image  = self.transform(image)
@@ -56,23 +56,14 @@ class DataGenerator(torch.utils.data.Dataset):
 
 ### DataLoader
 class DataModule(LightningDataModule):
-    def __init__(self, coords_file, wsi_file, train_transform = None, val_transform = None, batch_size = 8):
+    def __init__(self, coords_file, wsi_file, train_transform = None, val_transform = None, batch_size = 8, **kwargs):
         super().__init__()
-        self.coords_file     = coords_file
-        self.wsi_file        = wsi_file
-        self.train_transform = train_transform
-        self.val_transform   = val_transform
         self.batch_size      = batch_size
-        self.train_data      = []
-        self.val_data        = []
-        self.test_data       = []
-        self.inference       = False
 
-    def setup(self, stage):
-        ids_split          = np.round(np.array([0.7, 0.8, 1.0])*len(self.coords_file)).astype(np.int32)
-        self.train_data    = DataGenerator(self.coords_file[:ids_split[0]], self.wsi_file, self.inference, self.train_transform)
-        self.val_data      = DataGenerator(self.coords_file[ids_split[0]:ids_split[1]], self.wsi_file,  self.inference,  self.val_transform)
-        self.test_data     = DataGenerator(self.coords_file[ids_split[1]:ids_split[-1]], self.wsi_file, self.inference,  self.val_transform)
+        ids_split            = np.round(np.array([0.7, 0.8, 1.0])*len(coords_file)).astype(np.int32)
+        self.train_data      = DataGenerator(coords_file[:ids_split[0]],              wsi_file,  transform = train_transform, **kwargs)
+        self.val_data        = DataGenerator(coords_file[ids_split[0]:ids_split[1]],  wsi_file,  transform = val_transform, **kwargs)
+        self.test_data       = DataGenerator(coords_file[ids_split[1]:ids_split[-1]], wsi_file,  transform = val_transform, **kwargs)
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=10)
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
@@ -99,7 +90,9 @@ def LoadFileParameter(preprocessingfolder):
 def SaveFileParameter(df, preprocessingfolder, column_to_add, label_to_add):
     CoordsPath = Path(preprocessingfolder,"patches")
     CoordsPath.mkdir(parents=True, exist_ok=True)
-    df[label_to_add] = column_to_add
+    
+    df[label_to_add]  =  pd.Series(column_to_add)    
+    df = df.fillna(0)
     for patient_id, df_split in df.groupby(df.patient_id):
         TotalPath = Path(CoordsPath, patient_id+".csv")
         df_split.to_csv(str(TotalPath))

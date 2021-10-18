@@ -42,7 +42,6 @@ class AutoEncoder(LightningModule):
         #self.loss_fcn = torch.nn.L1Loss(reduction="sum")        
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
-        #summary(self.model, (3,256,256))                
         return self.model(x)
     
    
@@ -94,9 +93,10 @@ if __name__ == "__main__":
     ##First create a master loader
     wsi_file, coords_file = LoadFileParameter(sys.argv[1])
     
+
     coords_file = coords_file[coords_file[ "tumour_label"]==1] ## Only the patches that have tumour in them
     seed_everything(42) 
-
+    
     callbacks = [
         ModelCheckpoint(
             dirpath='./',
@@ -110,11 +110,11 @@ if __name__ == "__main__":
     trainer  = Trainer(gpus=1, max_epochs=10,callbacks=callbacks)
     model    = AutoEncoder()
 
-    data     = DataModule(coords_file, wsi_file, train_transform = train_transform, val_transform = val_transform, batch_size=4)
+    data     = DataModule(coords_file, wsi_file, train_transform = train_transform, val_transform = val_transform, batch_size=4, inference=False, dim=(64,64))
     trainer.fit(model, data)
-    
+    print("hello")
     ## Testing
-    test_dataset       = DataGenerator(coords_file, wsi_file, inference = True,transform=val_transform)
+    test_dataset       = DataGenerator(coords_file, wsi_file, inference = True,transform=val_transform, dim=(64,64))
     num_of_predictions = 10
     for n in range(num_of_predictions):
         idx        = np.random.randint(len(coords_file),size=1)[0]

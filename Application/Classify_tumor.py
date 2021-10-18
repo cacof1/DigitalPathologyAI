@@ -57,8 +57,9 @@ transform = transforms.Compose([
 model = ImageClassifier.load_from_checkpoint(sys.argv[2])
 
 ## Now train
-trainer = pl.Trainer(gpus=1) ## Yuck but ok, it contain all the generalisation for parallel processing
-dataset = DataLoader(DataGenerator(coords_file, wsi_file, transform = transform, inference = True), batch_size=1, num_workers=10, shuffle=False)
+trainer = pl.Trainer(gpus=0) ## Yuck but ok, it contain all the generalisation for parallel processing
+print(trainer, dir(trainer))
+dataset = DataLoader(DataGenerator(coords_file, wsi_file, transform = transform, inference = True), batch_size=10, num_workers=10, shuffle=False)
 preds   = trainer.predict(model,dataset)
 predictions = []
 for i in range(len(preds)):
