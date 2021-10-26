@@ -21,24 +21,28 @@ from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
-## Module - Utils
-from utils.StainNorm import normalizeStaining
-
 ## Module - Dataloaders
 from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator
 
 ## Module - Models
-from Model.unet import UNet
-from Model.resnet import ResNet, ResNetResidualBlock
+from Model.unet import UNet, Decoder
+from Model.resnet import ResNet, ResNetResidualBlock, ResNetEncoder
 
 ## Main Model
 class AutoEncoder(LightningModule):
     def __init__(self) -> None:
         super().__init__()
+        wf = 7
+        depth = 5 
+        self.unet_model   = UNet(in_channels=3, n_classes = 3, depth=depth,wf=wf)
+        self.resnet_model = ResNet(in_channels=3, n_classes=3, block=ResNetResidualBlock, depth=depth, wf=wf)
+        self.decoder = self.unet_model.decoder
+        self.encoder = self.resnet_model.encoder
+
+        self.model   = self.unet_model#nn.Sequential(self.encoder,self.decoder)
+        summary(self.model.to('cuda'), (3,64,64))
         
-        self.model = UNet(in_channels=3, n_classes = 3)
-        #self.model =  ResNet(in_channels=3, n_classes=3, block=ResNetResidualBlock)
-        self.loss_fcn = torch.nn.MSELoss(reduction="sum")
+        self.loss_fcn = torch.nn.MSELoss()
         #self.loss_fcn = torch.nn.L1Loss(reduction="sum")        
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -60,8 +64,10 @@ class AutoEncoder(LightningModule):
         return loss
    
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(),lr=1e-1)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
+        #optimizer = torch.optim.Adam(self.parameters(),lr=1e-1)
+        optimizer = torch.optim.Adadelta(self.parameters(),lr=1e-1)
+        #optimizer = torch.optim.SGD(self.parameters(),lr=1e-1,momentum=0.9)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.01)
         return [optimizer], [scheduler]
 
 if __name__ == "__main__":   
@@ -93,9 +99,9 @@ if __name__ == "__main__":
     ##First create a master loader
     wsi_file, coords_file = LoadFileParameter(sys.argv[1])
     
-
+    
     coords_file = coords_file[coords_file[ "tumour_label"]==1] ## Only the patches that have tumour in them
-    seed_everything(42) 
+    #seed_everything(42) 
     
     callbacks = [
         ModelCheckpoint(
@@ -104,23 +110,26 @@ if __name__ == "__main__":
             filename="model_AutoEncoder",#.{epoch:02d}-{val_loss:.2f}.h5",
             save_top_k=1,
             mode='min'),
-        #EarlyStopping(monitor='val_loss')
+        EarlyStopping(monitor='val_loss')
     ]
 
-    trainer  = Trainer(gpus=1, max_epochs=10,callbacks=callbacks)
+    trainer  = Trainer(gpus=1, max_epochs=2,callbacks=callbacks)
     model    = AutoEncoder()
 
-    data     = DataModule(coords_file, wsi_file, train_transform = train_transform, val_transform = val_transform, batch_size=4, inference=False, dim=(64,64))
+    dim = (64,64)
+    vis_level = 1
+    
+    data     = DataModule(coords_file, wsi_file, train_transform = train_transform, val_transform = val_transform, batch_size=4, inference=False, dim=dim, vis_level = vis_level)
     trainer.fit(model, data)
-    print("hello")
+
     ## Testing
-    test_dataset       = DataGenerator(coords_file, wsi_file, inference = True,transform=val_transform, dim=(64,64))
+    test_dataset       = DataGenerator(coords_file, wsi_file, inference = True,transform=val_transform, dim=dim, vis_level = vis_level)
     num_of_predictions = 10
     for n in range(num_of_predictions):
         idx        = np.random.randint(len(coords_file),size=1)[0]
 
         image     = test_dataset[idx][np.newaxis]
-        image_out = model.forward(image)
+        image_out = trainer.model.forward(image)
         image     = invTrans(image.squeeze())
         image_out = invTrans(image_out.squeeze())
         

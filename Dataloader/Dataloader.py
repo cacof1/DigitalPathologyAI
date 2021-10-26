@@ -7,8 +7,8 @@ import pandas as pd
 import os
 from pathlib import Path
 
-##utils
-from utils.StainNorm import normalizeStaining
+##Normalization
+from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
 
 from torch.utils.data import Dataset
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -32,6 +32,7 @@ class DataGenerator(torch.utils.data.Dataset):
         self.vis_level        = vis_level        
         self.dim              = dim
         self.inference        = inference
+        self.normalizer       = TorchMacenkoNormalizer()
     def __len__(self):
         return int(self.coords_file.shape[0]/100) ## / 100 for quick processing
 
@@ -42,10 +43,11 @@ class DataGenerator(torch.utils.data.Dataset):
         label = data["label"]
 
         ## Normalization -- not great so far, but buggy otherwise
-        #try:
-        #    image, H, E = normalizeStaining(image)
-        #except:
-        #    pass
+        try:
+            image, H, E  = self.normalizer.normalize(image)
+            #image, H, E = MacenkoNormalization(image)
+        except:
+            pass
 
         ## Transform - Data Augmentation
         if self.transform: image  = self.transform(image)
