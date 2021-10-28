@@ -9,20 +9,15 @@ import pytorch_lightning as pl
 from torchmetrics.functional import accuracy
 from torch.nn.functional import cross_entropy
 from torch.optim import Adam
-from torch.nn import functional as F
+
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision.ops import box_iou
 from utils.COCOengine import evaluate
 
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def get_transform(train):
-    transforms = []
-    transforms.append(T.ToTensor())
-    if train:
-        transforms.append(T.RandomHorizontalFlip(0.5))
-    return T.Compose(transforms)
 
 
 def _evaluate_iou(target, pred):
@@ -124,8 +119,8 @@ if __name__ == "__main__":
     
     data = (filelist, dataset_type = 'MitosisDetection')
     
-    dataset = Dataset(data,get_transform(train=True))
-    dataset_test = Dataset(df_all,get_transform(train=False))
+    dataset = Dataset(data,train=True)
+    dataset_test = Dataset(df_all,train=False)
     indices = torch.randperm(len(dataset)).tolist()
     dataset_train = Subset(dataset, indices[:-100])
     dataset_test = Subset(dataset_test, indices[-100:])
