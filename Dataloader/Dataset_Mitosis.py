@@ -5,15 +5,7 @@ Created on Thu Oct 28 08:23:27 2021
 @author: zhuoy
 """
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim import lr_scheduler
 import numpy as np
-import torchvision
-from torchvision import datasets, models, transforms
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-import matplotlib.pyplot as plt
 import time
 import os
 import copy
@@ -21,22 +13,12 @@ import h5py
 import sys
 import cv2
 import pandas as pd
-import transforms as T
-from engine import train_one_epoch, evaluate
-import utils_
 
 from wsi_core.WholeSlideImage import WholeSlideImage
 import geojson
-from torchvision import transforms
-import matplotlib.pyplot as plt
-from pytorch_lightning.loggers import TensorBoardLogger
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset,Subset
-import segmentation_models_pytorch as smp
-from segmentation_models_pytorch.encoders import get_preprocessing_fn
-from sklearn.model_selection import train_test_split
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #device = 'cpu'
