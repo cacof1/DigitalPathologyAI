@@ -19,6 +19,9 @@ import geojson
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset,Subset
+import torch.nn as nn
+from torch.nn import functional as F
+from torchvision.transforms import transforms as T
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #device = 'cpu'
