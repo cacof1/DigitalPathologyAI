@@ -44,13 +44,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 dim = (256,256)
 vis_level = 0
 
-def get_transform(train):
-    transforms = []
-    transforms.append(T.ToTensor())
-    if train:
-        transforms.append(T.RandomHorizontalFlip(0.5))
-    return T.Compose(transforms)
-
 class Dataset(Dataset):
     def __init__(self,df, transforms):
         self.transforms = transforms
