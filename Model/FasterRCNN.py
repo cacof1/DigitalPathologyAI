@@ -12,9 +12,18 @@ from torch.optim import Adam
 from torch.nn import functional as F
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
-from engine import evaluate
+from torchvision.ops import box_iou
+from utils.engine import evaluate
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+def get_transform(train):
+    transforms = []
+    transforms.append(T.ToTensor())
+    if train:
+        transforms.append(T.RandomHorizontalFlip(0.5))
+    return T.Compose(transforms)
+
 
 def _evaluate_iou(target, pred):
 
