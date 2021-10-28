@@ -26,9 +26,48 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 dim = (256,256)
 vis_level = 0
 
-class Dataset(Dataset):
-    def __init__(self,df, transforms):
+class Compose(object):
+    def __init__(self, transforms):
         self.transforms = transforms
+
+    def __call__(self, image, target):
+        for t in self.transforms:
+            image, target = t(image, target)
+        return image, target
+    
+class RandomHorizontalFlip(T.RandomHorizontalFlip):
+    def forward(self, image: Tensor,
+                target: Optional[Dict[str, Tensor]] = None) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
+        if torch.rand(1) < self.p:
+            image = F.hflip(image)
+            if target is not None:
+                width, _ = F._get_image_size(image)
+                target["boxes"][:, [0, 2]] = width - target["boxes"][:, [2, 0]]
+                if "masks" in target:
+                    target["masks"] = target["masks"].flip(-1)
+                if "keypoints" in target:
+                    keypoints = target["keypoints"]
+                    keypoints = _flip_coco_person_keypoints(keypoints, width)
+                    target["keypoints"] = keypoints
+        return image, target
+    
+class ToTensor(nn.Module):
+    def forward(self, image: Tensor,
+                target: Optional[Dict[str, Tensor]] = None) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
+        image = F.to_tensor(image)
+        return image, target
+    
+def get_transform(train):
+    transforms = []
+    transforms.append(ToTensor())
+    if train:
+        transforms.append(RandomHorizontalFlip(0.5))
+    return Compose(transforms)
+
+
+class Dataset(Dataset):
+    def __init__(self,df, train=False):
+        self.transforms = get_transform(train)
         self.df = df
 
     def __getitem__(self, i):
