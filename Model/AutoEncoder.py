@@ -26,21 +26,18 @@ from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator
 
 ## Module - Models
 from Model.unet import UNet, Decoder
+from Model.simplemodel import SimpleNet
 from Model.resnet import ResNet, ResNetResidualBlock, ResNetEncoder
 
 ## Main Model
 class AutoEncoder(LightningModule):
     def __init__(self) -> None:
         super().__init__()
-        wf = 7
+        wf = 5
         depth = 5 
-        self.unet_model   = UNet(in_channels=3, n_classes = 3, depth=depth,wf=wf)
-        self.resnet_model = ResNet(in_channels=3, n_classes=3, block=ResNetResidualBlock, depth=depth, wf=wf)
-        self.decoder = self.unet_model.decoder
-        self.encoder = self.resnet_model.encoder
-
-        self.model   = self.unet_model#nn.Sequential(self.encoder,self.decoder)
-        summary(self.model.to('cuda'), (3,64,64))
+        #self.model   = SimpleNet(in_channels=3, n_classes = 3, depth=depth,wf=wf)
+        self.model = UNet(in_channels=3, n_classes =3, depth= depth, wf =wf) 
+        summary(self.model.to('cuda'), (3,96,96))
         
         self.loss_fcn = torch.nn.MSELoss()
         #self.loss_fcn = torch.nn.L1Loss(reduction="sum")        
@@ -64,41 +61,38 @@ class AutoEncoder(LightningModule):
         return loss
    
     def configure_optimizers(self):
-        #optimizer = torch.optim.Adam(self.parameters(),lr=1e-1)
-        optimizer = torch.optim.Adadelta(self.parameters(),lr=1e-1)
-        #optimizer = torch.optim.SGD(self.parameters(),lr=1e-1,momentum=0.9)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.01)
-        return [optimizer], [scheduler]
-
+        #optimizer = torch.optim.Adam(self.parameters(),lr=1e-3)
+        #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+        return torch.optim.Adam(self.parameters(),lr=1e-3,eps=1e-7)#[optimizer], [scheduler]
+    
 if __name__ == "__main__":   
-
+    
     ## Transforms    
     train_transform = transforms.Compose([
         transforms.ToTensor(),
         #transforms.RandomResizedCrop(size=(32,32)),
         #transforms.RandomVerticalFlip(p=0.5),
         #transforms.RandomHorizontalFlip(p=0.5),
-        transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),
-        transforms.ColorJitter(),
+        #transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),
+        #transforms.ColorJitter(),
         #transforms.RandomRotation(5),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         
     ])
 
     val_transform   = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]) 
     
     invTrans   = transforms.Compose([
-        transforms.Normalize(mean = [ 0., 0., 0. ], std = [ 1./0.229, 1./0.224, 1./0.225 ]),
-        transforms.Normalize(mean = [ -0.485, -0.456, -0.406 ], std = [ 1., 1., 1. ]),        
+        #transforms.Normalize(mean = [ 0., 0., 0. ], std = [ 1./0.229, 1./0.224, 1./0.225 ]),
+        #transforms.Normalize(mean = [ -0.485, -0.456, -0.406 ], std = [ 1., 1., 1. ]),        
         torchvision.transforms.ToPILImage()
     ])
-    
+
     ##First create a master loader
     wsi_file, coords_file = LoadFileParameter(sys.argv[1])
-    
     
     coords_file = coords_file[coords_file[ "tumour_label"]==1] ## Only the patches that have tumour in them
     #seed_everything(42) 
@@ -110,31 +104,37 @@ if __name__ == "__main__":
             filename="model_AutoEncoder",#.{epoch:02d}-{val_loss:.2f}.h5",
             save_top_k=1,
             mode='min'),
-        EarlyStopping(monitor='val_loss')
+        #EarlyStopping(monitor='val_loss')
     ]
-
-    trainer  = Trainer(gpus=1, max_epochs=2,callbacks=callbacks)
+    
+    trainer  = Trainer(gpus=1, max_epochs=25,callbacks=callbacks)
     model    = AutoEncoder()
 
-    dim = (64,64)
-    vis_level = 1
+    dim = (96,96)
+    vis_level = 0
     
-    data     = DataModule(coords_file, wsi_file, train_transform = train_transform, val_transform = val_transform, batch_size=4, inference=False, dim=dim, vis_level = vis_level)
+    data     = DataModule(coords_file, wsi_file,batch_size=32, train_transform = train_transform, val_transform = val_transform, inference=False, dim=dim, vis_level = vis_level)                              
     trainer.fit(model, data)
 
     ## Testing
     test_dataset       = DataGenerator(coords_file, wsi_file, inference = True,transform=val_transform, dim=dim, vis_level = vis_level)
-    num_of_predictions = 10
-    for n in range(num_of_predictions):
-        idx        = np.random.randint(len(coords_file),size=1)[0]
+    n = 10
+    plt.figure(figsize=(20, 4))
 
+    for i in range(n):
+        idx        = np.random.randint(len(coords_file),size=1)[0]
         image     = test_dataset[idx][np.newaxis]
         image_out = trainer.model.forward(image)
         image     = invTrans(image.squeeze())
         image_out = invTrans(image_out.squeeze())
-        
-        plt.subplot(1,2,1)
+        ax = plt.subplot(2, n, i + 1)
         plt.imshow(image)
-        plt.subplot(1,2,2)
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+
+        ax = plt.subplot(2, n, i + 1 + n)
         plt.imshow(image_out)
-        plt.show()
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)       
+    
+    plt.show()
