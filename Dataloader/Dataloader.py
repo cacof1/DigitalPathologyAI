@@ -7,8 +7,8 @@ import pandas as pd
 import os
 from pathlib import Path
 
-##Normalization
-from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
+##utils
+from utils.StainNorm import normalizeStaining
 
 from torch.utils.data import Dataset
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -20,6 +20,7 @@ import sys, glob
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 class DataGenerator(torch.utils.data.Dataset):
     def __init__(self, coords_file, wsi_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None):
@@ -31,27 +32,25 @@ class DataGenerator(torch.utils.data.Dataset):
         self.vis_level        = vis_level        
         self.dim              = dim
         self.inference        = inference
-        self.normalizer       = TorchMacenkoNormalizer()
     def __len__(self):
-        return int(self.coords_file.shape[0]) ## / 100 for quick processing
+        return int(self.coords_file.shape[0]/100) ## / 100 for quick processing
 
     def __getitem__(self, id):
         # load image
         data  = self.coords_file.iloc[id,:]
         image = np.array(self.wsi_file[data["patient_id"]].wsi.read_region([data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
         label = data["label"]
+
         ## Normalization -- not great so far, but buggy otherwise
         #try:
-        #    image, H, E  = self.normalizer.normalize(image)
-        #    #image, H, E = MacenkoNormalization(image)
+        #    image, H, E = normalizeStaining(image)
         #except:
         #    pass
-        image = image.astype('float32') / 255.
 
         ## Transform - Data Augmentation
         if self.transform: image  = self.transform(image)
         if self.target_transform: label  = self.target_transform(label)
-        
+
         if(self.inference): return image
         else: return image,label
 
