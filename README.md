@@ -47,7 +47,7 @@ The code has a series of separate goals to fulfill, and thus a modular programmi
 * **DataLoader** : Dataloading should be done using the DataLoader class, which is in the DataLoader subfolder. The class contains both a Data Generator (for inference), and a pytorch Data Module (for training). Important are the keywords arguments dim (dimension of the patch), vis_level (magnification level), and inference (boolean).
 * **Model**: Models are stored in the Model subfolder. Generally, pre-written code should be imported from pytorch to minimize code error. Modified generic model are stored in small capital letter when needed (e.g. unet, resnet, where the latter are used for autoencoding). Code in Capital letters (e.g. AutoEncoding) will contains a full pytorch modular construction, and answer to a specific problem. These models may have a specific __main__ examplar, but should generally be used and defined as a standalone. 
 * **Losses** : Subfolder containing non-generic loss functions
-* **Applications** : Subfolder containing the assembled application, e.g. clustering, autoencoding, classifying. Each application will 1. load the DataLoader and data, 2. load the model, and perform training in batches and return the results. It might also perform inference where needed.
+* **Inference** : Subfolder containing the assembled application, e.g. clustering, autoencoding, classifying. Each application will 1. load the DataLoader and data, 2. load the model, and perform training in batches and return the results. 
 * **wsi_core** : Extracted snippet from the CLAM project that extract patches contours and remove background.
 
 
