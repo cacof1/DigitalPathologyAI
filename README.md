@@ -52,3 +52,8 @@ The code has a series of separate goals to fulfill, and thus a modular programmi
 
 
 ## Visualisation
+Currently, the class Visualize can provide two funtions,
+1. Creating the heatmap for visualizing the tumorous and normal areas;
+2. Investigating and visualizing the feature vectors by dimension reduction approaches.
+
+Besides, the FeatureEmbedding_vis_app.py can visaulize the 3D dimension reduction results of different patients using a web app.
