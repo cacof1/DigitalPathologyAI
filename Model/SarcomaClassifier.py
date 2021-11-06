@@ -31,6 +31,7 @@ from torch.nn import functional as F
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule
+from SarcomaClassification.Methods import AppendSarcomaLabel
 
 # This is a LightningModule class used for the classification of patches into tumour subtypes.
 
@@ -55,6 +56,13 @@ class SarcomaClassifier(pl.LightningModule):
         #self.feature_extractor = torch.nn.Sequential(*layers)
         #self.classifier = torch.nn.Linear(num_filters, self.num_classes)
 
+        #self.model = nn.Sequential(
+        #    self.backbone,
+        #    nn.softmax()
+        #)
+
+        self.loss_fcn = torch.nn.CrossEntropyLoss()
+
     def forward(self, x):
 
         x = self.backbone(x)
@@ -67,7 +75,7 @@ class SarcomaClassifier(pl.LightningModule):
 
         image, labels = train_batch
         logits = self(image)
-        loss = F.cross_entropy(logits, labels)
+        loss = self.loss_fcn(logits, labels)
         acc = accuracy(logits, labels)
 
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
@@ -79,7 +87,7 @@ class SarcomaClassifier(pl.LightningModule):
 
         image, labels = val_batch
         logits = self(image)
-        loss = F.cross_entropy(logits, labels)
+        loss = self.loss_fcn(logits, labels)
 
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, labels)
@@ -93,7 +101,7 @@ class SarcomaClassifier(pl.LightningModule):
 
         image, labels = test_batch
         logits = self(image)
-        loss = F.cross_entropy(logits, labels)
+        loss = self.loss_fcn(logits, labels)
 
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, labels)
@@ -118,26 +126,38 @@ class SarcomaClassifier(pl.LightningModule):
 ######################################################################################################################
 
 
-if __name__ == "__main__":  # To train
+if __name__ == "__main__":
 
-    wsi_file, coords_file = LoadFileParameter('../Preprocessing/')  # (sys.argv[1])
+    preprocessingfolder = '../Preprocessing/'  # (sys.argv[1])
 
+    AppendSarcomaLabel(preprocessingfolder)  # If not present, add sarcoma type label for classification.
+
+    wsi_file, coords_file = LoadFileParameter(preprocessingfolder)
     coords_file = coords_file[coords_file["tumour_label"] == 1]  # Conserve only the patches labeled as tumour
 
-    pl.seed_everything(42)  # Select random seed
+    pl.seed_everything(42)
 
     transform = transforms.Compose([
         transforms.ToTensor(),  # this also normalizes to [0,1].
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])  # Generate transforms according to resnet/densenet documentation
+    ])  # Required transforms according to resnet/densenet documentation
 
     data = DataModule(coords_file, wsi_file, train_transform=transform, val_transform=transform, batch_size=4,
-                        inference=False, dim=(64, 64), target='label')  # Initialize dataset
+                        inference=False, dim=(256, 256), target='label')
 
-    model = SarcomaClassifier()  # Initialize model
+    model = SarcomaClassifier()
     #model = SarcomaClassifier.load_from_checkpoint(sys.argv[2]) # to load from a previous checkpoint
 
-    trainer = pl.Trainer(gpus=torch.cuda.device_count(), max_epochs=3, progress_bar_refresh_rate=20)  # Initialize trainer
+    trainer = pl.Trainer(gpus=torch.cuda.device_count(), max_epochs=3, progress_bar_refresh_rate=20)
 
-    test = trainer.fit(model, data)  # Train
+    res = trainer.fit(model, data)
+
+    save_model_path = '../SarcomaClassification/saved_models/test1.pt'
+    torch.save(model, save_model_path)
+
+    # Sample code for inference
+    # model = SarcomaClassifier()
+    # model = torch.load(save_model_path)
+    # model.eval()
+    # Verify if load on GPU/CPU is required - https://pytorch.org/tutorials/beginner/saving_loading_models.html
 

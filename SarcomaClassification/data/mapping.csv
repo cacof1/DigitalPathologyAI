@@ -1,0 +1,7 @@
+label,sarcoma_type,Notes
+0,solitary_fibrous_tumour_low,NA
+1,solitary_fibrous_tumour_high,NA
+1,solitary_fibrous_tumour_intermediate,Intermediate and high grades are considered as the same class for now.
+2,desmoid_fibromatosis,NA
+3,nodular_fasciitis,NA
+4,superficial_fibromatosis,NA

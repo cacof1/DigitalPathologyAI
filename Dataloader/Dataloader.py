@@ -22,7 +22,7 @@ from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
 
 class DataGenerator(torch.utils.data.Dataset):
-    def __init__(self, coords_file, wsi_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None):
+    def __init__(self, coords_file, wsi_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None, target = "label"):
         super().__init__()
         self.transform        = transform
         self.target_transform = target_transform
@@ -32,6 +32,7 @@ class DataGenerator(torch.utils.data.Dataset):
         self.dim              = dim
         self.inference        = inference
         self.normalizer       = TorchMacenkoNormalizer()
+        self.target           = target
     def __len__(self):
         return int(self.coords_file.shape[0]) ## / 100 for quick processing
 
@@ -39,7 +40,7 @@ class DataGenerator(torch.utils.data.Dataset):
         # load image
         data  = self.coords_file.iloc[id,:]
         image = np.array(self.wsi_file[data["patient_id"]].wsi.read_region([data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
-        label = data["label"]
+        label = data[self.target]
         ## Normalization -- not great so far, but buggy otherwise
         #try:
         #    image, H, E  = self.normalizer.normalize(image)
