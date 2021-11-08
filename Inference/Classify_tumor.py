@@ -39,14 +39,20 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pathlib import Path
 
 ## Module - Dataloaders
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator
+from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, WSIQuery
 
 ## Module - Models
 from Model.TumorClassifier import ImageClassifier
 
 ##First create a master loader
-wsi_file, coords_file = LoadFileParameter(sys.argv[1])
-coords_file           = coords_file
+
+MasterSheet      = sys.argv[1]
+SVS_Folder       = sys.argv[2]
+Patch_Folder     = sys.argv[3]
+Pretrained_Model = sys.argv[4]
+
+ids                   = WSIQuery(MasterSheet)
+wsi_file, coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -54,12 +60,11 @@ transform = transforms.Compose([
 ])
 
 ## Load the previous  model
-model = ImageClassifier.load_from_checkpoint(sys.argv[2])
+model = ImageClassifier.load_from_checkpoint(Pretrained_Model)
 
 ## Now train
 
 trainer = pl.Trainer(gpus=1, benchmark = True) ## Yuck but ok, it contain all the generalisation for parallel processing
-print(trainer, dir(trainer))
 dataset = DataLoader(DataGenerator(coords_file, wsi_file, transform = transform, inference = True), batch_size=10, num_workers=10, shuffle=False)
 preds   = trainer.predict(model,dataset)
 predictions = []

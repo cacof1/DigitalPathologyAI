@@ -20,26 +20,19 @@ if __name__ == '__main__':
     parser.add_argument('--no_auto_skip', default=True, action='store_false')
     parser.add_argument('--save_dir', type = str, help='directory to save processed data')
     parser.add_argument('--patch_level', type=int, default=0, help='downsample level at which to patch')
-    parser.add_argument('--process_list',  type = str, default=None, help='name of list of images to process with parameters (.csv)')
     
     args = parser.parse_args()
     config = vars(args)
     config["patch_save_dir"] = os.path.join(args.save_dir, 'patches')
-    config["mask_save_dir"] = os.path.join(args.save_dir, 'masks')
-    config["stitch_save_dir"] = os.path.join(args.save_dir, 'stitches')    
-    patch_save_dir = os.path.join(args.save_dir, 'patches')
-    mask_save_dir = os.path.join(args.save_dir, 'masks')
-    stitch_save_dir = os.path.join(args.save_dir, 'stitches')
+    config["mask_save_dir"] = os.path.join(args.save_dir, 'QA','masks')
+    config["stitch_save_dir"] = os.path.join(args.save_dir, 'QA','stitches')    
     ### End of parser
        
-    if args.process_list: process_list = os.path.join(args.save_dir, args.process_list)
-    else: process_list = None
-    
     directories = {'source': args.source,
                    'save_dir': args.save_dir,
-                   'patch_save_dir': patch_save_dir,
-                   'mask_save_dir' : mask_save_dir,
-                   'stitch_save_dir': stitch_save_dir}
+                   'patch_save_dir': config['patch_save_dir'],
+                   'mask_save_dir' : config['mask_save_dir'],
+                   'stitch_save_dir': config['stitch_save_dir']}
     
     for key, val in directories.items(): ## Create directories
         print("{} : {}".format(key, val))
@@ -102,14 +95,14 @@ if __name__ == '__main__':
         ### Segmentation
         WSI_object.segmentTissue(**seg_params, filter_params=filter_params)
         mask = WSI_object.visWSI(**vis_params)
-        mask_path = os.path.join(mask_save_dir, slide_id+'.jpg')
+        mask_path = os.path.join(config['mask_save_dir'], slide_id+'.jpg')
         mask.save(mask_path)
 
         ### Patching
-        patch_params.update({'patch_level': args.patch_level, 'patch_size': args.patch_size, 'step_size': args.step_size, 'save_path': patch_save_dir})
+        patch_params.update({'patch_level': args.patch_level, 'patch_size': args.patch_size, 'step_size': args.step_size, 'save_path': config['patch_save_dir']})
         dataframe = WSI_object.process_contours(**patch_params)
 
         ### Stitching
         stitchmap = StitchCoords(dataframe, config, WSI_object, downscale=64, bg_color=(0,0,0), alpha=-1, draw_grid=False)
-        stitchmap.save(os.path.join(stitch_save_dir, slide_id+'.jpg'))
+        stitchmap.save(os.path.join(config['stitch_save_dir'], slide_id+'.jpg'))
 

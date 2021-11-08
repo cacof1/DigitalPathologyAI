@@ -7,6 +7,7 @@ import pandas as pd
 import os
 from pathlib import Path
 from sklearn.utils import shuffle
+
 ##Normalization
 from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
 
@@ -39,22 +40,30 @@ class DataGenerator(torch.utils.data.Dataset):
     def __getitem__(self, id):
         # load image
         data  = self.coords_file.iloc[id,:]
-        image = np.array(self.wsi_file[data["patient_id"]].wsi.read_region([data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
-        label = data[self.target]
+        image = np.array(self.wsi_file[data["file_id"]].wsi.read_region([data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
+
         ## Normalization -- not great so far, but buggy otherwise
         #try:
         #    image, H, E  = self.normalizer.normalize(image)
         #    #image, H, E = MacenkoNormalization(image)
+
         #except:
         #    pass
+
         image = image.astype('float32') / 255.
 
         ## Transform - Data Augmentation
         if self.transform: image  = self.transform(image)
-        if self.target_transform: label  = self.target_transform(label)
-        
-        if(self.inference): return image
-        else: return image,label
+
+
+        if(self.inference):##Training
+            return image
+
+        else: ## Inference
+            label = data[self.target]            
+            if self.target_transform: label  = self.target_transform(label)
+
+            return image,label
 
 ### DataLoader
 class DataModule(LightningDataModule):
@@ -71,20 +80,27 @@ class DataModule(LightningDataModule):
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
     def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
 
-def LoadFileParameter(mastersheet,svs_folder, patches_folder, **kwargs):
-
+def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
     dataframe  = pd.read_csv(mastersheet)
     for key,item in kwargs.items(): dataframe = dataframe[dataframe[key]==item]
-    ids = dataframe['id']
+    ids = dataframe['id'].astype('int')
+    return sorted(ids)
+
+
+def LoadFileParameter(ids,svs_folder, patch_folder):
+    
     wsi_file    = {}
     coords_file = pd.DataFrame()    
-    for filenb,fileid in enumerate(ids):
-        coords          = pd.read_csv(svs_folder + '/{}.svs'.format(id),index_col=0)
-        wsi_file_object = WholeSlideImage(svs_folder + '/{}.svs'.format(id))
-        coords['patient_id'] = patient_id
-        wsi_file[patient_id] = wsi_file_object
-        if(filenb==0): coords_file = coords
-        else: coords_file = coords_file.append(coords)
+    for filenb,file_id in enumerate(ids):
+        try:
+            coords          = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0)
+            wsi_file_object = WholeSlideImage(svs_folder + '/{}.svs'.format(file_id))
+            coords['file_id'] = file_id
+            wsi_file[file_id] = wsi_file_object
+            if(filenb==0): coords_file = coords
+            else: coords_file = coords_file.append(coords)
+
+        except: continue
 
     return wsi_file, coords_file
 def SaveFileParameter(df, preprocessingfolder, column_to_add, label_to_add):
@@ -93,7 +109,7 @@ def SaveFileParameter(df, preprocessingfolder, column_to_add, label_to_add):
     
     df[label_to_add]  =  pd.Series(column_to_add)    
     df = df.fillna(0)
-    for patient_id, df_split in df.groupby(df.patient_id):
-        TotalPath = Path(CoordsPath, patient_id+".csv")
+    for file_id, df_split in df.groupby(df.file_id):
+        TotalPath = Path(CoordsPath, file_id+".csv")
         df_split.to_csv(str(TotalPath))
 
