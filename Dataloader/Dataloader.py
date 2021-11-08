@@ -6,7 +6,7 @@ from torchvision import transforms
 import pandas as pd
 import os
 from pathlib import Path
-
+from sklearn.utils import shuffle
 ##Normalization
 from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
 
@@ -58,33 +58,31 @@ class DataGenerator(torch.utils.data.Dataset):
 
 ### DataLoader
 class DataModule(LightningDataModule):
-    def __init__(self, coords_file, wsi_file, train_transform = None, val_transform = None, batch_size = 8, **kwargs):
+    def __init__(self, coords_file, wsi_file, train_transform = None, val_transform = None, batch_size = 8, random_state = 0, **kwargs):
         super().__init__()
-        self.batch_size      = batch_size
-
-        ids_split            = np.round(np.array([0.7, 0.8, 1.0])*len(coords_file)).astype(np.int32)
-        self.train_data      = DataGenerator(coords_file[:ids_split[0]],              wsi_file,  transform = train_transform, **kwargs)
-        self.val_data        = DataGenerator(coords_file[ids_split[0]:ids_split[1]],  wsi_file,  transform = val_transform, **kwargs)
-        self.test_data       = DataGenerator(coords_file[ids_split[1]:ids_split[-1]], wsi_file,  transform = val_transform, **kwargs)
+        self.batch_size       = batch_size
+        coords_file, wsi_file = shuffle(coords_file, wsi_file, random_state=random_state)
+        ids_split             = np.round(np.array([0.7, 0.8, 1.0])*len(coords_file)).astype(np.int32)
+        self.train_data       = DataGenerator(coords_file[:ids_split[0]],              wsi_file,  transform = train_transform, **kwargs)
+        self.val_data         = DataGenerator(coords_file[ids_split[0]:ids_split[1]],  wsi_file,  transform = val_transform, **kwargs)
+        self.test_data        = DataGenerator(coords_file[ids_split[1]:ids_split[-1]], wsi_file,  transform = val_transform, **kwargs)
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=10)
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
     def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
 
-def LoadFileParameter(preprocessingfolder):
-    CoordsPath = os.path.join(preprocessingfolder,"patches")
-    WSIPath    = os.path.join(preprocessingfolder,"wsi")
-    wsi_file = {}
-    coords_file = pd.DataFrame()
-    source    = Path(CoordsPath).glob("*.csv")
-    for filenb,filename in enumerate(source):        
-        coords          = pd.read_csv(filename,index_col=0)
-        patient_id      = filename.stem
-        wsi_file_object = WholeSlideImage(WSIPath + '/{}.svs'.format(patient_id))
-        coords['patient_id'] = patient_id
-        coords['label']      = 0  
-        wsi_file[patient_id] = wsi_file_object
+def LoadFileParameter(mastersheet,svs_folder, patches_folder, **kwargs):
 
+    dataframe  = pd.read_csv(mastersheet)
+    for key,item in kwargs.items(): dataframe = dataframe[dataframe[key]==item]
+    ids = dataframe['id']
+    wsi_file    = {}
+    coords_file = pd.DataFrame()    
+    for filenb,fileid in enumerate(ids):
+        coords          = pd.read_csv(svs_folder + '/{}.svs'.format(id),index_col=0)
+        wsi_file_object = WholeSlideImage(svs_folder + '/{}.svs'.format(id))
+        coords['patient_id'] = patient_id
+        wsi_file[patient_id] = wsi_file_object
         if(filenb==0): coords_file = coords
         else: coords_file = coords_file.append(coords)
 

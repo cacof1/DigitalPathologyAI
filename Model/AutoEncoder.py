@@ -92,7 +92,7 @@ if __name__ == "__main__":
     ])
 
     ##First create a master loader
-    wsi_file, coords_file = LoadFileParameter(sys.argv[1])
+    wsi_file, coords_file = LoadFileParameter(sys.argv[1],sys.argv[2],sys.argv[3])
     
     coords_file = coords_file[coords_file[ "tumour_label"]==1] ## Only the patches that have tumour in them
     #seed_everything(42) 
