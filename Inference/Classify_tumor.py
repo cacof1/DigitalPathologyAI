@@ -72,7 +72,7 @@ for i in range(len(preds)):
     indpred = preds[i][0].tolist()[0][1]
     predictions.append(indpred)
 
-SaveFileParameter(coords_file, sys.argv[1], predictions,"tumour_label")
+SaveFileParameter(coords_file, Patch_Folder, predictions,"tumour_label")
 
 
 

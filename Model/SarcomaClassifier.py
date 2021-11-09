@@ -30,8 +30,10 @@ from torch.nn.functional import cross_entropy
 from torch.nn import functional as F
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule
+from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
 from SarcomaClassification.Methods import AppendSarcomaLabel
+import argparse
+
 
 # This is a LightningModule class used for the classification of patches into tumour subtypes.
 
@@ -50,21 +52,20 @@ class SarcomaClassifier(pl.LightningModule):
         # Fine tuning of models @ https://pytorch.org/tutorials/beginner/finetuning_torchvision_models_tutorial.html
 
         # Example for resnet50:
-        #self.backbone = models.resnet50(pretrained=True)
-        #num_filters = self.backbone.fc.in_features
-        #layers = list(self.backbone.children())[:-1]
-        #self.feature_extractor = torch.nn.Sequential(*layers)
-        #self.classifier = torch.nn.Linear(num_filters, self.num_classes)
+        # self.backbone = models.resnet50(pretrained=True)
+        # num_filters = self.backbone.fc.in_features
+        # layers = list(self.backbone.children())[:-1]
+        # self.feature_extractor = torch.nn.Sequential(*layers)
+        # self.classifier = torch.nn.Linear(num_filters, self.num_classes)
 
-        #self.model = nn.Sequential(
+        # self.model = nn.Sequential(
         #    self.backbone,
         #    nn.softmax()
-        #)
+        # )
 
         self.loss_fcn = torch.nn.CrossEntropyLoss()
 
     def forward(self, x):
-
         x = self.backbone(x)
         x = F.softmax(x, dim=1)
 
@@ -84,7 +85,6 @@ class SarcomaClassifier(pl.LightningModule):
         return loss
 
     def validation_step(self, val_batch, batch_idx):
-
         image, labels = val_batch
         logits = self(image)
         loss = self.loss_fcn(logits, labels)
@@ -98,7 +98,6 @@ class SarcomaClassifier(pl.LightningModule):
         return loss
 
     def testing_step(self, test_batch, batch_idx):
-
         image, labels = test_batch
         logits = self(image)
         loss = self.loss_fcn(logits, labels)
@@ -112,27 +111,40 @@ class SarcomaClassifier(pl.LightningModule):
         return loss
 
     def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):
-
         image, label = batch
 
         return self(image)
 
     def configure_optimizers(self):
-
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
         return optimizer
 
 ######################################################################################################################
 
-
 if __name__ == "__main__":
 
-    preprocessingfolder = '../Preprocessing/'  # (sys.argv[1])
+    # Option to run with or without arguments. Will be updated with parser in the near future
+    if len(sys.argv) == 1:
+        MasterSheet = '../SarcomaClassification/data/sarcoma_diagnoses.csv'  # sys.argv[1]
+        SVS_Folder = '../Preprocessing/wsi/'  # sys.argv[2]
+        Patch_Folder = '../Preprocessing/patches/'  # sys.argv[3]
+    else:
+        MasterSheet = sys.argv[1]
+        SVS_Folder = sys.argv[2]
+        Patch_Folder = sys.argv[3]
 
-    AppendSarcomaLabel(preprocessingfolder)  # If not present, add sarcoma type label for classification.
+    # Otherwise parse the input (to implement)
 
-    wsi_file, coords_file = LoadFileParameter(preprocessingfolder)
+    # Select 10 slices of each SFT low and SFT high for training.
+    ids = WSIQuery(MasterSheet, diagnosis='solitary_fibrous_tumour', grade='low')[:10]
+    ids.extend(WSIQuery(MasterSheet, diagnosis='solitary_fibrous_tumour', grade='high')[:10])
+
+    print(ids)
+
+    AppendSarcomaLabel(ids, SVS_Folder, Patch_Folder)  # If not present, add sarcoma type label for classification.
+    wsi_file, coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
+
     coords_file = coords_file[coords_file["tumour_label"] == 1]  # Conserve only the patches labeled as tumour
 
     pl.seed_everything(42)
@@ -143,21 +155,28 @@ if __name__ == "__main__":
     ])  # Required transforms according to resnet/densenet documentation
 
     data = DataModule(coords_file, wsi_file, train_transform=transform, val_transform=transform, batch_size=4,
-                        inference=False, dim=(256, 256), target='label')
+                      inference=False, dim=(256, 256), target='sarcoma_label')
 
     model = SarcomaClassifier()
-    #model = SarcomaClassifier.load_from_checkpoint(sys.argv[2]) # to load from a previous checkpoint
+    # model = SarcomaClassifier.load_from_checkpoint(sys.argv[2]) # to load from a previous checkpoint
 
-    trainer = pl.Trainer(gpus=torch.cuda.device_count(), max_epochs=3, progress_bar_refresh_rate=20)
+    trainer = pl.Trainer(gpus=torch.cuda.device_count(), max_epochs=10, progress_bar_refresh_rate=20)
 
     res = trainer.fit(model, data)
 
-    save_model_path = '../SarcomaClassification/saved_models/test1.pt'
+    save_model_path = '../PretrainedModel/test1_SarcomaClassifier.pt'
     torch.save(model, save_model_path)
+
+    # Export the results of the model
+    predicted_sarcoma_classes = []
+    for i in range(len(res)):
+        ind_res = res[i][0].tolist()[0][1]
+        predicted_sarcoma_classes.append(ind_res)
+
+    SaveFileParameter(coords_file, Patch_Folder, predicted_sarcoma_classes, "sarcoma_predicted_label")
 
     # Sample code for inference
     # model = SarcomaClassifier()
     # model = torch.load(save_model_path)
     # model.eval()
     # Verify if load on GPU/CPU is required - https://pytorch.org/tutorials/beginner/saving_loading_models.html
-
