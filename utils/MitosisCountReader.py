@@ -1,4 +1,3 @@
-import h5py
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,7 +20,7 @@ def onclick(event):
 
 file_path = sys.argv[1]
 
-with h5py.File(file_path, "r") as f:
+## Missing a line
     print(dir(f))
     print(f.keys())
     dset = f['coords']

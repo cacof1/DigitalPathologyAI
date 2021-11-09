@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import time
 import os
 import copy
-import h5py
 import sys
 import cv2
 

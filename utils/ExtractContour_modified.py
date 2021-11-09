@@ -4,7 +4,6 @@ Created on Tue Jul 20 07:25:35 2021
 @author: zhuoy
 """
 
-import h5py
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,7 +15,7 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 import geojson
 
 contours_file = open(sys.argv[1])
-coords_file = h5py.File(sys.argv[2], "r+")
+coords_file = #
 wsi_object = WholeSlideImage((sys.argv[3]))
 contours = geojson.load(contours_file)
 coords = coords_file['coords']

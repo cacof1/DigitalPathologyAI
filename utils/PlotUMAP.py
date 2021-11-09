@@ -7,7 +7,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import umap
 import sys, glob
-import h5py
 ## Master Loader
 CoordsFolder = sys.argv[1]
 ModelPath    = sys.argv[2]
@@ -16,7 +15,7 @@ WSIPath      = "Box01/"
 wsi_file = {}
 coords_file = pd.DataFrame()
 for filenb,filename in enumerate(glob.glob(CoordsFolder+"*.h5")):
-    coords          = np.array(h5py.File(filename, "r")['coords'])
+    coords          = #np.array()
     patient_id      = filename.split("/")[-1][:-3]
     wsi_file_object      = WholeSlideImage(WSIPath + '{}.svs'.format(patient_id))
     coords_file_temp              = pd.DataFrame(coords,columns=['coords_x','coords_y'])
