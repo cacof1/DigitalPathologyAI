@@ -14,7 +14,7 @@ import torchvision.models as models
 import numpy as np
 import torch
 import openslide
-import h5py, sys, glob
+import sys, glob
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
@@ -22,7 +22,7 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 ## Module - Dataloaders
-from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator
+from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator, WSIQuery
 
 ## Module - Models
 from Model.unet import UNet, Decoder
@@ -61,9 +61,9 @@ class AutoEncoder(LightningModule):
         return loss
    
     def configure_optimizers(self):
-        #optimizer = torch.optim.Adam(self.parameters(),lr=1e-3)
-        #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
-        return torch.optim.Adam(self.parameters(),lr=1e-3,eps=1e-7)#[optimizer], [scheduler]
+        optimizer = torch.optim.Adam(self.parameters(),lr=1e-3,eps=1e-7)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+        return [optimizer], [scheduler]
     
 if __name__ == "__main__":   
     
@@ -91,8 +91,15 @@ if __name__ == "__main__":
         torchvision.transforms.ToPILImage()
     ])
 
-    ##First create a master loader
-    wsi_file, coords_file = LoadFileParameter(sys.argv[1],sys.argv[2],sys.argv[3])
+    MasterSheet    = sys.argv[1]
+    SVS_Folder     = sys.argv[2]
+    Patches_Folder = sys.argv[3]
+    
+    ## First query from the main    
+    ids = WSIQuery(MasterSheet)
+    
+    ##First create a master loader    
+    wsi_file, coords_file = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
     
     coords_file = coords_file[coords_file[ "tumour_label"]==1] ## Only the patches that have tumour in them
     #seed_everything(42) 

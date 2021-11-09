@@ -9,7 +9,6 @@ import numpy as np
 import time
 import os
 import copy
-import h5py
 import sys
 import cv2
 import pandas as pd

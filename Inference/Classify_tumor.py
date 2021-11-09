@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import time
 import os
 import copy
-import h5py
 import sys
 
 from wsi_core.WholeSlideImage import WholeSlideImage

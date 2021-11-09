@@ -23,7 +23,7 @@ from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
 
 class DataGenerator(torch.utils.data.Dataset):
-    def __init__(self, coords_file, wsi_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None, target = "label"):
+    def __init__(self, coords_file, wsi_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None, target = "tumour_label"):
         super().__init__()
         self.transform        = transform
         self.target_transform = target_transform
@@ -39,8 +39,9 @@ class DataGenerator(torch.utils.data.Dataset):
 
     def __getitem__(self, id):
         # load image
+
         data  = self.coords_file.iloc[id,:]
-        image = np.array(self.wsi_file[data["file_id"]].wsi.read_region([data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
+        image = np.array(self.wsi_file[data["file_id"]].wsi.read_region([ data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
 
         ## Normalization -- not great so far, but buggy otherwise
         #try:
@@ -70,7 +71,7 @@ class DataModule(LightningDataModule):
     def __init__(self, coords_file, wsi_file, train_transform = None, val_transform = None, batch_size = 8, random_state = 0, **kwargs):
         super().__init__()
         self.batch_size       = batch_size
-        coords_file, wsi_file = shuffle(coords_file, wsi_file, random_state=random_state)
+        #coords_file, wsi_file = shuffle(coords_file, wsi_file, random_state=random_state)
         ids_split             = np.round(np.array([0.7, 0.8, 1.0])*len(coords_file)).astype(np.int32)
         self.train_data       = DataGenerator(coords_file[:ids_split[0]],              wsi_file,  transform = train_transform, **kwargs)
         self.val_data         = DataGenerator(coords_file[ids_split[0]:ids_split[1]],  wsi_file,  transform = val_transform, **kwargs)
@@ -79,6 +80,7 @@ class DataModule(LightningDataModule):
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=10)
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
     def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
+
 
 def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
     dataframe  = pd.read_csv(mastersheet)
@@ -93,7 +95,7 @@ def LoadFileParameter(ids,svs_folder, patch_folder):
     coords_file = pd.DataFrame()    
     for filenb,file_id in enumerate(ids):
         try:
-            coords          = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0)
+            coords          = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0).astype('int32') ##ish
             wsi_file_object = WholeSlideImage(svs_folder + '/{}.svs'.format(file_id))
             coords['file_id'] = file_id
             wsi_file[file_id] = wsi_file_object
@@ -103,13 +105,13 @@ def LoadFileParameter(ids,svs_folder, patch_folder):
         except: continue
 
     return wsi_file, coords_file
-def SaveFileParameter(df, preprocessingfolder, column_to_add, label_to_add):
-    CoordsPath = Path(preprocessingfolder,"patches")
+def SaveFileParameter(df, Patch_Folder, column_to_add, label_to_add):
+    CoordsPath = Path(Patch_Folder)
     CoordsPath.mkdir(parents=True, exist_ok=True)
     
     df[label_to_add]  =  pd.Series(column_to_add)    
     df = df.fillna(0)
     for file_id, df_split in df.groupby(df.file_id):
-        TotalPath = Path(CoordsPath, file_id+".csv")
+        TotalPath = Path(CoordsPath, str(file_id)+".csv")
         df_split.to_csv(str(TotalPath))
 
