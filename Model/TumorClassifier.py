@@ -105,8 +105,7 @@ class ImageClassifier(pl.LightningModule):
         return loss
     
     def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):
-        print("hello")
-        image, label = batch
+        image =  batch
         return self(image)
 
     def configure_optimizers(self):

@@ -63,7 +63,7 @@ model = ImageClassifier.load_from_checkpoint(Pretrained_Model)
 
 ## Now train
 
-trainer = pl.Trainer(gpus=1, benchmark = True) ## Yuck but ok, it contain all the generalisation for parallel processing
+trainer = pl.Trainer(accelerator='auto', benchmark = True) ## Yuck but ok, it contain all the generalisation for parallel processing
 dataset = DataLoader(DataGenerator(coords_file, wsi_file, transform = transform, inference = True), batch_size=10, num_workers=10, shuffle=False)
 preds   = trainer.predict(model,dataset)
 predictions = []
