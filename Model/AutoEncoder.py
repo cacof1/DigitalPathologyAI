@@ -62,7 +62,7 @@ class AutoEncoder(LightningModule):
    
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(),lr=1e-3,eps=1e-7)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1,verbose=True)
         return [optimizer], [scheduler]
     
 if __name__ == "__main__":   

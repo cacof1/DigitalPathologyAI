@@ -27,7 +27,7 @@ class DataGenerator(torch.utils.data.Dataset):
         super().__init__()
         self.transform        = transform
         self.target_transform = target_transform
-        self.coords_file      = coords_file
+        self.coords           = coords_file
         self.wsi_file         = wsi_file
         self.vis_level        = vis_level        
         self.dim              = dim
@@ -35,14 +35,13 @@ class DataGenerator(torch.utils.data.Dataset):
         self.normalizer       = TorchMacenkoNormalizer()
         self.target           = target
     def __len__(self):
-        return int(self.coords_file.shape[0]) ## / 100 for quick processing
+        return int(self.coords.shape[0]) ## / 100 for quick processing
 
     def __getitem__(self, id):
         # load image
+        image = np.array(self.wsi_file[self.coords["file_id"].iloc[id]].wsi.read_region([ self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]], self.vis_level, self.dim).convert("RGB"))
 
-        data  = self.coords_file.iloc[id,:]
-        image = np.array(self.wsi_file[data["file_id"]].wsi.read_region([ data["coords_x"], data["coords_y"]], self.vis_level, self.dim).convert("RGB"))
-
+        
         ## Normalization -- not great so far, but buggy otherwise
         #try:
         #    image, H, E  = self.normalizer.normalize(image)
@@ -61,7 +60,7 @@ class DataGenerator(torch.utils.data.Dataset):
             return image
 
         else: ## Inference
-            label = data[self.target]            
+            label = self.coords[self.target].iloc[id]
             if self.target_transform: label  = self.target_transform(label)
 
             return image,label
@@ -71,7 +70,7 @@ class DataModule(LightningDataModule):
     def __init__(self, coords_file, wsi_file, train_transform = None, val_transform = None, batch_size = 8, random_state = 0, **kwargs):
         super().__init__()
         self.batch_size       = batch_size
-        #coords_file, wsi_file = shuffle(coords_file, wsi_file, random_state=random_state)
+
         ids_split             = np.round(np.array([0.7, 0.8, 1.0])*len(coords_file)).astype(np.int32)
         self.train_data       = DataGenerator(coords_file[:ids_split[0]],              wsi_file,  transform = train_transform, **kwargs)
         self.val_data         = DataGenerator(coords_file[ids_split[0]:ids_split[1]],  wsi_file,  transform = val_transform, **kwargs)
@@ -98,6 +97,7 @@ def LoadFileParameter(ids,svs_folder, patch_folder):
             coords          = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0)
             coords          = coords.astype({"coords_y":int, "coords_x":int})
             wsi_file_object = WholeSlideImage(svs_folder + '/{}.svs'.format(file_id))
+
             coords['file_id'] = file_id
             wsi_file[file_id] = wsi_file_object
             if(filenb==0): coords_file = coords
