@@ -95,7 +95,8 @@ def LoadFileParameter(ids,svs_folder, patch_folder):
     coords_file = pd.DataFrame()    
     for filenb,file_id in enumerate(ids):
         try:
-            coords          = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0).astype('int32') ##ish
+            coords          = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0)
+            coords          = coords.astype({"coords_y":int, "coords_x":int})
             wsi_file_object = WholeSlideImage(svs_folder + '/{}.svs'.format(file_id))
             coords['file_id'] = file_id
             wsi_file[file_id] = wsi_file_object
