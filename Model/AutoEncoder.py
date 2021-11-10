@@ -134,6 +134,7 @@ if __name__ == "__main__":
         image_out = trainer.model.forward(image)
         image     = invTrans(image.squeeze())
         image_out = invTrans(image_out.squeeze())
+
         ax = plt.subplot(2, n, i + 1)
         plt.imshow(image)
         ax.get_xaxis().set_visible(False)
