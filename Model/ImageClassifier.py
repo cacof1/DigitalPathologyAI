@@ -33,75 +33,43 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 class ImageClassifier(pl.LightningModule):
     
-    def __init__(self, num_classes=2, lr=0.01):
+    def __init__(self, num_classes=2):
         super().__init__()
-        self.save_hyperparameters()
         self.num_classes = num_classes
-        self.lr = lr
-
         self.backbone = models.resnet50(pretrained=True) 
-        num_filters = self.backbone.fc.in_features ## Longueur du vecteur a la fin  ## [8,3,256,256] --> [8,1024,1,1]
+        num_filters = self.backbone.fc.in_features 
         layers = list(self.backbone.children())[:-1] 
         self.feature_extractor = torch.nn.Sequential(*layers)
-
         self.classifier = torch.nn.Linear(num_filters, self.num_classes) ## FCN 1024 -> 5
-        #self.layer_1 = torch.nn.Linear(num_filters, 1024)
-        #self.layer_2 = torch.nn.Linear(1024, 512)
-        #self.layer_3 = torch.nn.Linear(512, self.num_classes)
+        self.model = nn.Sequential(
+            self.feature_extractor,
+            self.classifier,
+            torch.nn.SoftMax()
+            )
+        self.loss_fcn = torch.nn.CrossEntropyLoss()
         
     def forward(self, x):
-        self.feature_extractor.eval()
-        with torch.no_grad():
-            representations = self.feature_extractor(x).flatten(1) ## [8,1024,1,1] -> [8,1024]
-        
-        #x = self.layer_1(representations)
-        #x = F.relu(x)
-        #x = self.layer_2(x)
-        #x = F.relu(x)
-        #x = self.layer_3(x)
-        x = self.classifier(representations) ##[8,3]
-        x = F.softmax(x, dim=1)     ## Probability    
-        return [x, representations]  ##[ [8,3], [8,1024] ] ## code
+        return self.model(x)
 
     def training_step(self, batch, batch_idx):
-        # return the loss given a batch: this has a computational graph attached to it: optimization
-        image, labels = batch
-        print(image.size())
-        logits, features = self(image) ## (self.forward(image))
-
-        loss  = F.cross_entropy(logits, labels)  ## labels binaire, logits -> continue
-        acc   = accuracy(logits, labels)
-        
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('train_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-
-        #return {'loss' : loss, 'y_pred' : logits, 'y_true' : y}
+        image, labels    = batch
+        logits, features = self(image)
+        loss = self.loss_fcn(logits, labels) 
+        acc   = accuracy(logits, labels)        
         return loss
      
     def validation_step(self, batch, batch_idx):
-        
         image, labels = batch
         logits, features = self(image)
-        loss = F.cross_entropy(logits, labels) 
+        loss = self.loss_fcn(logits, labels) 
         acc = accuracy(logits, labels)        
-
-        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('val_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        
-        #return {'loss' : loss, 'y_pred' : logits, 'y_true' : y}
         return loss
     
     def testing_step(self, batch, batch_idx):
-
         image, labels = batch
         logits, features = self(image)
-        loss = F.cross_entropy(logits, labels) 
+        loss = self.loss_fcn(logits, labels) 
         acc = accuracy(logits, labels)        
-
-        self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('test_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        
-        #return {'loss' : loss, 'y_pred' : logits, 'y_true' : y}
         return loss
     
     def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):

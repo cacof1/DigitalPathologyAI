@@ -41,7 +41,7 @@ from pathlib import Path
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, WSIQuery
 
 ## Module - Models
-from Model.TumorClassifier import ImageClassifier
+from Model.ImageClassifier import ImageClassifier
 
 ##First create a master loader
 
@@ -52,6 +52,7 @@ Pretrained_Model = sys.argv[4]
 
 ids                   = WSIQuery(MasterSheet)
 wsi_file, coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
+coords_file = coords_file[:100]
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -63,11 +64,13 @@ model = ImageClassifier.load_from_checkpoint(Pretrained_Model)
 
 ## Now train
 
-trainer = pl.Trainer(gpus=-1,auto_select_gpus=True,  auto_scale_batch_size = True, benchmark = True) ## Yuck but ok, it contain all the generalisation for parallel processing
-dataset = DataLoader(DataGenerator(coords_file, wsi_file, transform = transform, inference = True), batch_size=10, num_workers=os.cpu_counts(), shuffle=False)
+trainer = pl.Trainer(gpus=-1,auto_select_gpus=True, benchmark = True) ## Yuck but ok, it contain all the generalisation for parallel processing
+dataset = DataLoader(DataGenerator(coords_file, wsi_file, transform = transform, inference = True), batch_size=10, num_workers=os.cpu_count(), shuffle=False)
 preds   = trainer.predict(model,dataset)
+
 predictions = []
 for i in range(len(preds)):
+
     indpred = preds[i][0].tolist()[0][1]
     predictions.append(indpred)
 
