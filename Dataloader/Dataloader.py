@@ -110,7 +110,7 @@ def SaveFileParameter(df, Patch_Folder, column_to_add, label_to_add):
     CoordsPath = Path(Patch_Folder)
     CoordsPath.mkdir(parents=True, exist_ok=True)
     
-    df[label_to_add]  =  pd.Series(column_to_add)    
+    df[label_to_add]  =  pd.Series(column_to_add, index=df.index)
     df = df.fillna(0)
     for file_id, df_split in df.groupby(df.file_id):
         TotalPath = Path(CoordsPath, str(file_id)+".csv")
