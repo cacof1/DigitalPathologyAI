@@ -67,7 +67,7 @@ class DataGenerator(torch.utils.data.Dataset):
 
 ### DataLoader
 class DataModule(LightningDataModule):
-    def __init__(self, coords_file, wsi_file, train_transform = None, val_transform = None, batch_size = 8, random_state = 0, **kwargs):
+    def __init__(self, coords_file, wsi_file, train_transform=None, val_transform=None, batch_size=8, random_state=0, **kwargs):
         super().__init__()
         self.batch_size       = batch_size
 
@@ -76,8 +76,8 @@ class DataModule(LightningDataModule):
         self.val_data         = DataGenerator(coords_file[ids_split[0]:ids_split[1]],  wsi_file,  transform = val_transform, **kwargs)
         self.test_data        = DataGenerator(coords_file[ids_split[1]:ids_split[-1]], wsi_file,  transform = val_transform, **kwargs)
 
-    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=10)
-    def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=10)
+    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10)
+    def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10)
     def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
 
 

@@ -1,99 +1,102 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim import lr_scheduler
-import numpy as np
-import torchvision
-from torchvision import datasets, models, transforms
-import matplotlib.pyplot as plt
-import time
-import os
-import copy
-import sys
-import cv2
-
-from torchvision import transforms
-import matplotlib.pyplot as plt
-from pytorch_lightning.loggers import TensorBoardLogger
-import torch
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset as BaseDataset
-import segmentation_models_pytorch as smp
-from segmentation_models_pytorch.encoders import get_preprocessing_fn
-from sklearn.model_selection import train_test_split
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-
+from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
 import pytorch_lightning as pl
-from torchmetrics.functional import accuracy
-from torch.nn.functional import cross_entropy
+import sys
+import torch
 from torch.optim import Adam
-from torch.nn import functional as F
-from torch.nn.functional import softmax
-from pytorch_lightning.callbacks import ModelCheckpoint
+import torch.nn as nn
+from torchmetrics.functional import accuracy
+from torchvision import datasets, models, transforms
+
 
 class ImageClassifier(pl.LightningModule):
-    
-    def __init__(self, num_classes=2):
+
+    def __init__(self, num_classes=2, lr=0.01, backbone=models.densenet121(), lossfcn=nn.CrossEntropyLoss()):
         super().__init__()
+        self.lr = lr
         self.num_classes = num_classes
-        self.backbone = models.resnet50(pretrained=True) 
-        num_filters = self.backbone.fc.in_features 
-        layers = list(self.backbone.children())[:-1] 
-        self.feature_extractor = torch.nn.Sequential(*layers)
-        self.classifier = torch.nn.Linear(num_filters, self.num_classes) ## FCN 1024 -> 5
-        self.model = nn.Sequential(
-            self.feature_extractor,
-            self.classifier,
-            torch.nn.SoftMax()
-            )
-        self.loss_fcn = torch.nn.CrossEntropyLoss()
-        
+        self.backbone = backbone
+        self.loss_fcn = lossfcn
+        # self.model = nn.Sequential(self.backbone, nn.LazyLinear(512), nn.LazyLinear(num_classes)) # LazyLinear buggy
+        out_feats = list(backbone.children())[-1].out_features
+        self.model = nn.Sequential(self.backbone, nn.Linear(out_feats, 512), nn.Linear(512, num_classes))
+
     def forward(self, x):
         return self.model(x)
 
-    def training_step(self, batch, batch_idx):
-        image, labels    = batch
-        logits, features = self(image)
-        loss = self.loss_fcn(logits, labels) 
-        acc   = accuracy(logits, labels)        
+    def training_step(self, train_batch, batch_idx):
+        image, labels = train_batch
+        logits = self(image)
+        loss = self.loss_fcn(logits, labels)
+        acc = accuracy(logits, labels)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
-     
-    def validation_step(self, batch, batch_idx):
-        image, labels = batch
-        logits, features = self(image)
-        loss = self.loss_fcn(logits, labels) 
-        acc = accuracy(logits, labels)        
+
+    def validation_step(self, val_batch, batch_idx):
+        image, labels = val_batch
+        logits = self(image)
+        loss = self.loss_fcn(logits, labels)
+        preds = torch.argmax(logits, dim=1)
+        acc = accuracy(preds, labels)
+        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
-    
-    def testing_step(self, batch, batch_idx):
-        image, labels = batch
-        logits, features = self(image)
-        loss = self.loss_fcn(logits, labels) 
-        acc = accuracy(logits, labels)        
+
+    def testing_step(self, test_batch, batch_idx):
+        image, labels = test_batch
+        logits = self(image)
+        loss = self.loss_fcn(logits, labels)
+        preds = torch.argmax(logits, dim=1)
+        acc = accuracy(preds, labels)
+        self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
-    
-    def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):
-        image =  batch
+
+    def predict_step(self, batch):
+        image = batch
         return self(image)
 
     def configure_optimizers(self):
-        # return optimizer
         optimizer = Adam(self.parameters(), lr=self.lr)
+
         return optimizer
-    
+
+
 if __name__ == "__main__":
+    # Sample code to run a classifier - adjust to your needs.
 
-    wsi_file, coords_file = LoadFileParameter(sys.argv[1])
-    data  = DataModule(coords_file, wsi_file)#, train_transform = train_transform, val_transform = val_transform, batch_size=2)    
-    model = ImageClassifier()
-    
-    checkpoint_callback = ModelCheckpoint(
-        monitor='val_acc',
-        dirpath=log_path,
-        filename='{epoch:02d}-{val_acc:.2f}',
-        save_top_k=1,
-    mode='max',
-    )
+    pl.seed_everything(42)
 
-    trainer = pl.Trainer(gpus=1, max_epochs=3,callbacks=[checkpoint_callback])      
-    trainer.fit(model, data)
+    MasterSheet = sys.argv[1]
+    SVS_Folder = sys.argv[2]
+    Patch_Folder = sys.argv[3]
+
+    # For example, train on the first 1000 patches of each of the 10 first SFT.
+    ids = WSIQuery(MasterSheet, diagnosis='solitary_fibrous_tumour', grade='low')[:10]
+    wsi_file, coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
+    coords_file = coords_file[coords_file.index < 1000]
+
+    transform = transforms.Compose([
+        transforms.ToTensor(),  # this also normalizes to [0,1].
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+    data = DataModule(coords_file, wsi_file, train_transform=transform, val_transform=transform, batch_size=4,
+                      inference=False, dim=(256, 256), target='sarcoma_label')
+
+    model = ImageClassifier(backbone=models.densenet121(pretrained=True))
+    trainer = pl.Trainer(gpus=torch.cuda.device_count(), max_epochs=3)
+    probabilities = trainer.fit(model, data)
+
+    # Example to train from checkpoint :
+
+    # checkpoint_callback = ModelCheckpoint(
+    #    monitor='val_acc',
+    #    dirpath=log_path,
+    #    filename='{epoch:02d}-{val_acc:.2f}',
+    #    save_top_k=1,
+    # mode='max',
+    # )
+
+    # trainer = pl.Trainer(gpus=1, max_epochs=3,callbacks=[checkpoint_callback])
+    # trainer.fit(model, data)
