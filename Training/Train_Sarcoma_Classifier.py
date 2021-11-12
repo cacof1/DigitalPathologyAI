@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
 from Model.ImageClassifier import ImageClassifier
-from __local.SarcomaClassification.Methods import AppendSarcomaLabel
 
 # Example to achieve sarcoma types classification with the ImageClassifier class.
 
@@ -31,10 +30,6 @@ pl.seed_everything(42)
 # Select two WSI manually:
 ids = WSIQuery(MasterSheet, id=484757)
 ids.extend(WSIQuery(MasterSheet, id=484772))
-
-# The function below appends the ground truth (sarcoma labels) to csv files.
-# Adjust here according to the current dataset.
-all_sarcoma_labels = AppendSarcomaLabel(ids, SVS_Folder, Patch_Folder)  # Append sarcoma labels
 
 wsi_file, coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
 
