@@ -23,7 +23,7 @@ from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
 
 class DataGenerator(torch.utils.data.Dataset):
-    def __init__(self, coords_file, wsi_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None, target = "tumour_label"):
+    def __init__(self, coords_file, wsi_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform=None, target="tumour_label"):
         super().__init__()
         self.transform        = transform
         self.target_transform = target_transform
@@ -39,7 +39,7 @@ class DataGenerator(torch.utils.data.Dataset):
 
     def __getitem__(self, id):
         # load image
-        image = np.array(self.wsi_file[self.coords["file_id"].iloc[id]].wsi.read_region([ self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]], self.vis_level, self.dim).convert("RGB"))
+        image = np.array(self.wsi_file[self.coords["file_id"].iloc[id]].wsi.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]], self.vis_level, self.dim).convert("RGB"))
 
         
         ## Normalization -- not great so far, but buggy otherwise
@@ -60,14 +60,14 @@ class DataGenerator(torch.utils.data.Dataset):
             return image
 
         else: ## Inference
-            label = self.coords[self.target].iloc[id]
+            label = int(round(self.coords[self.target].iloc[id]))
             if self.target_transform: label  = self.target_transform(label)
 
             return image,label
 
 ### DataLoader
 class DataModule(LightningDataModule):
-    def __init__(self, coords_file, wsi_file, train_transform=None, val_transform=None, batch_size=8, random_state=0, **kwargs):
+    def __init__(self, coords_file, wsi_file, train_transform=None, val_transform=None, batch_size=8, pin_memory = True, random_state=0, **kwargs):
         super().__init__()
         self.batch_size       = batch_size
 

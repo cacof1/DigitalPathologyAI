@@ -12,7 +12,8 @@ from Model.ImageClassifier import ImageClassifier
 # Option to run with or without arguments. Will be updated with parser in the near future.
 if len(sys.argv) == 1:
     MasterSheet = '../__local/SarcomaClassification/data/sarcoma_diagnoses.csv'  # sys.argv[1]
-    SVS_Folder = '/Users/mikael/Dropbox/M/PostDoc/UCL/datasets/Digital_Pathology/sft_first_comparison/'
+    #SVS_Folder = '/Users/mikael/Dropbox/M/PostDoc/UCL/datasets/Digital_Pathology/sft_first_comparison/'
+    SVS_Folder = '/home/mikael/Documents/data/digpath/test_17nov_1low_1high'
     Patch_Folder = '../patches/'  # sys.argv[3]
 else:
     MasterSheet = sys.argv[1]
@@ -44,6 +45,7 @@ transform = transforms.Compose([
 
 data = DataModule(coords_file, wsi_file, train_transform=transform, val_transform=transform, batch_size=4,
                     inference=False, dim=(256, 256), target='sarcoma_label')
+# Note: make sure that sarcoma_label column in .csv file has been created prior to running the algorithm.
 
 model = ImageClassifier(backbone=models.densenet121(pretrained=False))
 # model = SarcomaClassifier.load_from_checkpoint(sys.argv[2]) # to load from a previous checkpoint
