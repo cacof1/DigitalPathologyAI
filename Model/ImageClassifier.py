@@ -6,6 +6,7 @@ from torch.optim import Adam
 import torch.nn as nn
 from torchmetrics.functional import accuracy
 from torchvision import datasets, models, transforms
+from torch.nn.functional import softmax
 
 
 class ImageClassifier(pl.LightningModule):
@@ -31,7 +32,8 @@ class ImageClassifier(pl.LightningModule):
         image, labels = train_batch
         logits = self(image)
         loss = self.loss_fcn(logits, labels)
-        acc = accuracy(logits, labels)
+        preds = torch.argmax(softmax(logits, dim=1), dim=1)
+        acc = accuracy(preds, labels)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('train_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
@@ -40,7 +42,7 @@ class ImageClassifier(pl.LightningModule):
         image, labels = val_batch
         logits = self(image)
         loss = self.loss_fcn(logits, labels)
-        preds = torch.argmax(logits, dim=1)
+        preds = torch.argmax(softmax(logits, dim=1), dim=1)
         acc = accuracy(preds, labels)
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('val_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
@@ -50,15 +52,15 @@ class ImageClassifier(pl.LightningModule):
         image, labels = test_batch
         logits = self(image)
         loss = self.loss_fcn(logits, labels)
-        preds = torch.argmax(logits, dim=1)
+        preds = torch.argmax(softmax(logits, dim=1), dim=1)
         acc = accuracy(preds, labels)
         self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('test_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
-    def predict_step(self, batch):
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
         image = batch
-        return self(image)
+        return softmax(self(image))
 
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.lr)

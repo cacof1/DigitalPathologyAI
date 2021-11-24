@@ -39,19 +39,12 @@ class DataGenerator(torch.utils.data.Dataset):
     def __getitem__(self, id):
         # load image
         wsi_file = WholeSlideImage(self.coords["wsi_path"].iloc[id])
-        print(dir(wsi_file))
+        
         image = np.array(wsi_file.wsi.read_region([ self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]], self.vis_level, self.dim).convert("RGB"))
-        plt.subplot(2,1,1)
-        plt.imshow(image)
+        )
 
         image = image.astype('float32')/255.    
         image = torch.from_numpy(image.transpose((2, 0, 1))).contiguous()
-
-        image_out  =image.squeeze().detach().cpu().numpy()
-        image_out = image_out.transpose((1, 2,0))
-        plt.subplot(2,1,2)
-        plt.imshow(image_out)
-        plt.show()
 
         
         ## Normalization -- not great so far, but buggy otherwise
