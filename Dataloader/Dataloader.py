@@ -7,7 +7,6 @@ import pandas as pd
 import os
 from pathlib import Path
 
-
 ##Normalization
 from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
 
@@ -38,14 +37,10 @@ class DataGenerator(torch.utils.data.Dataset):
 
     def __getitem__(self, id):
         # load image
-        wsi_file = WholeSlideImage(self.coords["wsi_path"].iloc[id])
-        
+        wsi_file = WholeSlideImage(self.coords["wsi_path"].iloc[id])        
         image = np.array(wsi_file.wsi.read_region([ self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]], self.vis_level, self.dim).convert("RGB"))
-        )
-
-        image = image.astype('float32')/255.    
-        image = torch.from_numpy(image.transpose((2, 0, 1))).contiguous()
-
+        #image = image.astype('float32')/255.    
+        #image = torch.from_numpy(image.transpose((2, 0, 1))).contiguous()
         
         ## Normalization -- not great so far, but buggy otherwise
         #try:
@@ -53,11 +48,9 @@ class DataGenerator(torch.utils.data.Dataset):
         #    #image, H, E = MacenkoNormalization(image)
         #except:
         #    pass
-
         
         ## Transform - Data Augmentation
-        #if self.transform: image  = self.transform(image)
-
+        if self.transform: image  = self.transform(image)
 
         if(self.inference):
             return image
@@ -81,7 +74,6 @@ class DataModule(LightningDataModule):
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
     def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
 
-
 def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
     dataframe  = pd.read_csv(mastersheet)
     for key,item in kwargs.items(): dataframe = dataframe[dataframe[key]==item]
@@ -92,15 +84,13 @@ def LoadFileParameter(ids,svs_folder, patch_folder):
     coords_file = pd.DataFrame()    
     for filenb,file_id in enumerate(ids):
         try:
-            coords          = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0)
-            wsi_path        = svs_folder + '/{}.svs'.format(file_id)#WholeSlideImage(svs_folder + '/{}.svs'.format(file_id))
-            coords['file_id'] = file_id
-            coords['wsi_path'] = wsi_path
+            coords             = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0)
+            coords['file_id']  = file_id
+            coords['wsi_path'] = svs_folder + '/{}.svs'.format(file_id)
             if(filenb==0): coords_file = coords
             else: coords_file = coords_file.append(coords)
-
         except: continue
-
+        
     return coords_file
 def SaveFileParameter(df, Patch_Folder, column_to_add, label_to_add):
     CoordsPath = Path(Patch_Folder)
@@ -110,4 +100,3 @@ def SaveFileParameter(df, Patch_Folder, column_to_add, label_to_add):
     for file_id, df_split in df.groupby(df.file_id):
         TotalPath = Path(CoordsPath, str(file_id)+".csv")
         df_split.to_csv(str(TotalPath))
-

@@ -53,53 +53,45 @@ ids                   = WSIQuery(MasterSheet)
 coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
 
 transform = transforms.Compose([
-    #transforms.ToTensor(),
+    transforms.ToTensor(),
     #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),    
 ])
 
 invTrans   = transforms.Compose([
     #transforms.Normalize(mean = [ 0., 0., 0. ], std = [ 1./0.229, 1./0.224, 1./0.225 ]),
     #transforms.Normalize(mean = [ -0.485, -0.456, -0.406 ], std = [ 1., 1., 1. ]),
-    #torchvision.transforms.ToPILImage()
+    torchvision.transforms.ToPILImage()
     ])
 
 ## Load the previous  model
-model = AutoEncoder.load_from_checkpoint(Pretrained_Model)
-
+trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
+trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model)
 ## Now train
-test_dataset = DataGenerator(coords_file, transform = transform, inference = True)
-n = 10
+test_dataset = DataLoader(DataGenerator(coords_file[:100], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False) 
 plt.figure(figsize=(20, 4))
 
+
+
+
+#idx        = np.random.randint(len(coords_file),size=1)[0]
+#image      = test_dataset[idx][np.newaxis]
+image_out   = trainer.predict(trainer.model,test_dataset)
+n = 10
+image = next(iter(test_dataset)) ## get the next batch
 for i in range(n):
-    idx        = np.random.randint(len(coords_file),size=1)[0]
-    image      = test_dataset[idx][np.newaxis]
-    image_out  = model.forward(image.cuda())
-
-    #image     = invTrans(image.squeeze())
-    #image_out = invTrans(image_out.squeeze())
+    img      = invTrans(image[i])
+    #img      = invTrans(test_dataset[0])
+    img_out  = invTrans(image_out[0][i])
     
-    image     = image.squeeze().detach().cpu().numpy()#*255
-    image     = image.transpose((1, 2,0))#.astype('uint8')
-
-    
-    image_out = image_out.squeeze().detach().cpu().numpy()
-    image_out = image_out/np.max(image_out)
-    print(np.max(image_out),np.max(image))
-    print(np.min(image_out),np.max(image))
-    #image_out = image_out*255
-    image_out = image_out.transpose((1,2,0))#.astype('uint8')
-
-    print(np.max(image_out),np.max(image))
     ax = plt.subplot(2, n, i + 1)
     if(i==0):ax.set_title("image_in")
-    plt.imshow(image)
+    plt.imshow(img)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
     
     ax = plt.subplot(2, n, i + 1 + n)
     if(i==0):ax.set_title("image_out")
-    plt.imshow(image_out)
+    plt.imshow(img_out)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)    
 plt.show()

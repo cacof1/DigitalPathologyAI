@@ -16,16 +16,16 @@ from wsi_core.wsi_utils import coord_generator, sample_indices, screen_coords, i
 import itertools
 from wsi_core.util_classes import isInContourV1, isInContourV2, isInContourV3_Easy, isInContourV3_Hard, Contour_Checking_fn
 import pickle
+                                                                                                                                                                                        
+from pathlib import Path
 
 Image.MAX_IMAGE_PIXELS = 933120000
 class WholeSlideImage(object):
     def __init__(self, path):
-
         """
-        Args:
-            path (str): fullpath to WSI file
+        Args: path (str): fullpath to WSI file
         """
-        self.name = ".".join(path.split("/")[-1].split('.')[:-1])
+        self.name = Path(path).stem #".".join(path.split("/")[-1].split('.')[:-1])
         self.wsi = openslide.open_slide(path)
         self.level_downsamples = self._assertLevelDownsamples()
         self.level_dim = self.wsi.level_dimensions

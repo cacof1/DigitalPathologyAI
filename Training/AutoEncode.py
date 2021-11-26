@@ -23,13 +23,15 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping,ModelSumm
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
 from Model.AutoEncoder import AutoEncoder
 
+checkpoint_callback = ModelCheckpoint(
+    dirpath='./',
+    monitor='val_loss',
+    filename="model_AutoEncoder",#.{epoch:02d}-{val_loss:.2f}.h5",
+    save_top_k=1,
+    mode='min')
+
 callbacks = [
-    ModelCheckpoint(
-        dirpath='./',
-        monitor='val_loss',
-        filename="model_AutoEncoder",#.{epoch:02d}-{val_loss:.2f}.h5",
-        save_top_k=1,
-        mode='min'),
+    checkpoint_callback
     ]
 train_transform = transforms.Compose([
     #transforms.ToTensor(),
@@ -54,10 +56,10 @@ Patches_Folder = sys.argv[3]
 ids = WSIQuery(MasterSheet)
 
 coords_file = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
-#coords_file = coords_file[:40000]
+coords_file = coords_file[:20000]
 seed_everything(42)                                                                                                                                                                                           
 
-trainer   = Trainer(gpus=1, max_epochs=15,precision=16, callbacks = callbacks)
+trainer   = Trainer(gpus=1, max_epochs=1,precision=32, callbacks = callbacks)
 model     = AutoEncoder()
 
 dim       = (96,96)
@@ -65,34 +67,25 @@ vis_level = 0
 data      = DataModule(coords_file, batch_size=64, train_transform = train_transform, val_transform = val_transform, inference=False, dim=dim, vis_level = vis_level)
 trainer.fit(model, data)
 
-## Testing                                                                                                                                                                                                     
-test_dataset       = DataGenerator(coords_file, inference = True,transform=val_transform, dim=dim, vis_level = vis_level)
+## Testing
+test_dataset = DataLoader(DataGenerator(coords_file[:100], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
+
+image      = next(iter(test_dataset))
+image_out  = trainer.predict(trainer.model,test_dataset)
 n = 10
 plt.figure(figsize=(20, 4))
-
 for i in range(n):
-    idx        = np.random.randint(len(coords_file),size=1)[0]
-    image     = test_dataset[idx][np.newaxis]
-    image_out = trainer.model.forward(image)
-
-    image     = image.squeeze().detach().cpu().numpy()#*255.
-    image     = image.transpose((1, 2,0))#.astype('uint8')
-
-    image_out = image_out.squeeze().detach().cpu().numpy()*255.
-    image_out = image_out.transpose((1,2,0))#.astype('uint8')
-
-    #image     = invTrans(image.squeeze())
-    #image_out = invTrans(image_out.squeeze())
-    #print(type(image))
-    #print(type(image_out))
+    img      = invTrans(image[i])
+    img_out  = invTrans(image_out[0][i])
     ax = plt.subplot(2, n, i + 1)
-    plt.imshow(image)
+    if(i==0):ax.set_title("image_in")
+    plt.imshow(img)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
-    
+
     ax = plt.subplot(2, n, i + 1 + n)
-    plt.imshow(image_out)
+    if(i==0):ax.set_title("image_out")
+    plt.imshow(img_out)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
-    
 plt.show()

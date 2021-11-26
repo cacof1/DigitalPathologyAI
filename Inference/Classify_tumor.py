@@ -81,7 +81,6 @@ trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=
 res = trainer.fit(model, data)
 
 # Make predictions
-
 # dataset = DataLoader(DataGenerator(coords_file, wsi_file, transform=transform, inference=True), batch_size=50, num_workers= os.cpu_count(), shuffle=True, pin_memory = True)
 # predictions = trainer.predict(model, dataset)
 # predicted_tumour_classes_probs = torch.Tensor.cpu(torch.cat(predictions))
