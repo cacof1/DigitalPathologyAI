@@ -51,6 +51,7 @@ Pretrained_Model = sys.argv[4]
 
 ids                   = WSIQuery(MasterSheet)
 coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
+coords_file = coords_file[coords_file["tumour_label"] == 1]
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -67,35 +68,26 @@ invTrans   = transforms.Compose([
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
 trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model)
 ## Now train
-test_dataset = DataLoader(DataGenerator(coords_file[:100], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False) 
-plt.figure(figsize=(20, 4))
-
-
-
-
-#idx        = np.random.randint(len(coords_file),size=1)[0]
-#image      = test_dataset[idx][np.newaxis]
-image_out   = trainer.predict(trainer.model,test_dataset)
+test_dataset = DataLoader(DataGenerator(coords_file[:1000], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
+image_out    = trainer.predict(trainer.model,test_dataset)
 n = 10
-image = next(iter(test_dataset)) ## get the next batch
-for i in range(n):
-    img      = invTrans(image[i])
-    #img      = invTrans(test_dataset[0])
-    img_out  = invTrans(image_out[0][i])
-    
-    ax = plt.subplot(2, n, i + 1)
-    if(i==0):ax.set_title("image_in")
-    plt.imshow(img)
-    ax.get_xaxis().set_visible(False)
-    ax.get_yaxis().set_visible(False)
-    
-    ax = plt.subplot(2, n, i + 1 + n)
-    if(i==0):ax.set_title("image_out")
-    plt.imshow(img_out)
-    ax.get_xaxis().set_visible(False)
-    ax.get_yaxis().set_visible(False)    
-plt.show()
+tmp = iter(test_dataset)
+for j in range(n):
+    plt.figure(figsize=(20, 4))
+    image = next(tmp)
+    for i in range(n):
+        img      = invTrans(image[i])
+        img_out  = invTrans(image_out[j][i])
+        ax = plt.subplot(2, n, i + 1)
+        if(i==0):ax.set_title("image_in")
+        plt.imshow(img)
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
 
-
-
+        ax = plt.subplot(2, n, i + 1 + n)
+        if(i==0):ax.set_title("image_out")
+        plt.imshow(img_out)
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+    plt.show()
 

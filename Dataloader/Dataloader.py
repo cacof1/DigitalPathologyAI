@@ -39,8 +39,6 @@ class DataGenerator(torch.utils.data.Dataset):
         # load image
         wsi_file = WholeSlideImage(self.coords["wsi_path"].iloc[id])        
         image = np.array(wsi_file.wsi.read_region([ self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]], self.vis_level, self.dim).convert("RGB"))
-        #image = image.astype('float32')/255.    
-        #image = torch.from_numpy(image.transpose((2, 0, 1))).contiguous()
         
         ## Normalization -- not great so far, but buggy otherwise
         #try:
@@ -51,7 +49,6 @@ class DataGenerator(torch.utils.data.Dataset):
         
         ## Transform - Data Augmentation
         if self.transform: image  = self.transform(image)
-
         if(self.inference):
             return image
 
@@ -70,8 +67,8 @@ class DataModule(LightningDataModule):
         self.val_data         = DataGenerator(coords_file[ids_split[0]:ids_split[1]],  transform = val_transform, **kwargs)
         self.test_data        = DataGenerator(coords_file[ids_split[1]:ids_split[-1]], transform = val_transform, **kwargs)
 
-    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
-    def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
+    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=False, shuffle=True)
+    def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=False)
     def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
 
 def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
