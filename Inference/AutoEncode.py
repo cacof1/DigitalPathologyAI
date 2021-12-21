@@ -19,6 +19,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset as BaseDataset
+from pytorch_lightning import seed_everything
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
@@ -38,6 +39,9 @@ from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGene
 ## Module - Models
 from Model.AutoEncoder import AutoEncoder
 
+seed_everything(42)
+
+
 ##First create a master loader
 
 MasterSheet      = sys.argv[1]
@@ -46,7 +50,8 @@ Patch_Folder     = sys.argv[3]
 Pretrained_Model = sys.argv[4]
 
 ids                   = WSIQuery(MasterSheet)
-wsi_file, coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
+coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
+coords_file = coords_file[coords_file["tumour_label"] == 1]
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -60,35 +65,29 @@ invTrans   = transforms.Compose([
     ])
 
 ## Load the previous  model
-model = AutoEncoder.load_from_checkpoint(Pretrained_Model)
-
+trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
+trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model)
 ## Now train
-test_dataset = DataGenerator(coords_file, wsi_file, transform = transform, inference = True)
+test_dataset = DataLoader(DataGenerator(coords_file[:1000], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
+image_out    = trainer.predict(trainer.model,test_dataset)
 n = 10
-plt.figure(figsize=(20, 4))
+tmp = iter(test_dataset)
+for j in range(n):
+    plt.figure(figsize=(20, 4))
+    image = next(tmp)
+    for i in range(n):
+        img      = invTrans(image[i])
+        img_out  = invTrans(image_out[j][i])
+        ax = plt.subplot(2, n, i + 1)
+        if(i==0):ax.set_title("image_in")
+        plt.imshow(img)
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
 
-for i in range(n):
-    idx       = np.random.randint(len(coords_file),size=1)[0]
-    image     = test_dataset[idx][np.newaxis]
-    image_out = model.forward(image.cuda())
-    image     = invTrans(image.squeeze())
-    image_out = invTrans(image_out.squeeze())
-
-    image_out = np.array(image_out).astype(np.float32) / 255.
-    image = np.array(image).astype(np.float32) / 255.            
-    ax = plt.subplot(2, n, i + 1)
-    if(i==0):ax.set_title("image_in")
-    plt.imshow(image)
-    ax.get_xaxis().set_visible(False)
-    ax.get_yaxis().set_visible(False)
-    
-    ax = plt.subplot(2, n, i + 1 + n)
-    if(i==0):ax.set_title("image_out")
-    plt.imshow(image_out)
-    ax.get_xaxis().set_visible(False)
-    ax.get_yaxis().set_visible(False)    
-plt.show()
-
-
-
+        ax = plt.subplot(2, n, i + 1 + n)
+        if(i==0):ax.set_title("image_out")
+        plt.imshow(img_out)
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+    plt.show()
 

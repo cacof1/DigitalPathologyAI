@@ -10,15 +10,13 @@ class Encoder(nn.Module):
         self.encoder = nn.ModuleList()
         for i in range(depth):
             out_channels = 2**(wf+i)
-            self.encoder.append(UNetDownBlock(in_channels, out_channels, padding, batch_norm))
+            self.encoder.append(UNetDownBlock(in_channels, out_channels))
             in_channels = out_channels
 
         self.out_channels = in_channels
     def forward(self, x):
         for i, down in enumerate(self.encoder):
             x = down(x)
-            #if i != len(self.encoder):
-            #    x = F.avg_pool2d(x, 2)
         return x
 
 class Decoder(nn.Module):
@@ -27,7 +25,7 @@ class Decoder(nn.Module):
         self.decoder = nn.ModuleList()
         for i in reversed(range(depth)):
             out_channels = 2**(wf+i)
-            self.decoder.append(UNetUpBlock(in_channels, out_channels,  padding, batch_norm))
+            self.decoder.append(UNetUpBlock(in_channels, out_channels))
             in_channels  = out_channels            
         self.last = nn.Conv2d(out_channels, n_classes, kernel_size=1,stride=1)
         
@@ -76,12 +74,12 @@ class UNetDownBlock(nn.Module):
         self.block = nn.Sequential(
             nn.Conv2d(in_size, out_size, kernel_size=3, padding=int(padding)),
             nn.PReLU(),
-            nn.BatchNorm2d(out_size),
-
             nn.Conv2d(out_size, out_size, kernel_size=3, padding=int(padding)),
+            nn.BatchNorm2d(out_size),            
             nn.PReLU(),
-            nn.BatchNorm2d(out_size),
-            nn.MaxPool2d((2,2)),
+            
+            nn.Conv2d(out_size, out_size, kernel_size=2, padding=0,stride=2),
+            nn.PReLU(),            
         )
 
     def forward(self, x):
@@ -90,16 +88,15 @@ class UNetDownBlock(nn.Module):
 
 
 class UNetUpBlock(nn.Module):
-    def __init__(self, in_size, out_size, padding, batch_norm):
+    def __init__(self, in_size, out_size):
         super(UNetUpBlock, self).__init__()
         self.block = nn.Sequential(
-            nn.ConvTranspose2d(in_size, out_size, kernel_size=2,stride=2),
-            nn.Conv2d(out_size, out_size, kernel_size=3, padding="same"),
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(in_size, out_size, kernel_size=3, padding="same"),
             nn.PReLU(),
-            nn.BatchNorm2d(out_size),
             nn.Conv2d(out_size, out_size, kernel_size=3, padding="same"),
+            nn.BatchNorm2d(out_size) ,                       
             nn.PReLU(),
-            nn.BatchNorm2d(out_size) ,           
             )
         
     def forward(self, x):
