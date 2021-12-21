@@ -2,7 +2,7 @@ from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGene
 import pytorch_lightning as pl
 import sys
 import torch
-from torch.optim import Adam
+from torch.optim import Adam,AdamW
 import torch.nn as nn
 from torchmetrics.functional import accuracy
 from torchvision import datasets, models, transforms
@@ -11,15 +11,18 @@ from torch.nn.functional import softmax
 
 class ImageClassifier(pl.LightningModule):
 
-    def __init__(self, num_classes=2, lr=1e-3, backbone=models.densenet121(), lossfcn=nn.CrossEntropyLoss()):
+    def __init__(self, num_classes=2, lr=1e-3, weight_decay=0, backbone=models.densenet121(), lossfcn=nn.CrossEntropyLoss()):
         super().__init__()
+        self.save_hyperparameters()  # Exports the hyperparameters to a YAML file, and create "self.hparams" namespace
         self.lr = lr
+        self.weight_decay = weight_decay
         self.num_classes = num_classes
         self.backbone = backbone
         self.loss_fcn = lossfcn
         # self.model = nn.Sequential(self.backbone, nn.LazyLinear(512), nn.LazyLinear(num_classes)) # LazyLinear buggy
         out_feats = list(backbone.children())[-1].out_features
-        self.model = nn.Sequential(self.backbone, nn.Linear(out_feats, 512), nn.Linear(512, num_classes))
+        # self.model = nn.Sequential(self.backbone, nn.Linear(out_feats, 512), nn.Linear(512, num_classes))
+        self.model = nn.Sequential(self.backbone, nn.Linear(out_feats, num_classes))
 
     def forward(self, x):
         return self.model(x)
@@ -56,10 +59,11 @@ class ImageClassifier(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         image = batch
-        return softmax(self(image))
+        return softmax(self(image), dim=1)
 
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.lr)
+        optimizer = AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
         return optimizer
 
