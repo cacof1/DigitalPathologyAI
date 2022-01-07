@@ -6,7 +6,7 @@ from torchvision import transforms
 import pandas as pd
 import os
 from pathlib import Path
-
+from sklearn.model_selection import train_test_split
 ##Normalization
 from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
 
@@ -22,7 +22,7 @@ from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
 
 class DataGenerator(torch.utils.data.Dataset):
-    def __init__(self, coords_file, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None, target = "tumour_label"):
+    def __init__(self, coords_file, target, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None):
         super().__init__()
         self.transform        = transform
         self.target_transform = target_transform
@@ -48,7 +48,9 @@ class DataGenerator(torch.utils.data.Dataset):
         #    pass
         
         ## Transform - Data Augmentation
+        
         if self.transform: image  = self.transform(image)
+
         if(self.inference):
             return image
 
@@ -59,17 +61,19 @@ class DataGenerator(torch.utils.data.Dataset):
 
 ### DataLoader
 class DataModule(LightningDataModule):
-    def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, **kwargs):
+    def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample = 5000, target="file_id", **kwargs):
         super().__init__()
         self.batch_size       = batch_size
-        ids_split             = np.round(np.array([0.7, 0.8, 1.0])*len(coords_file)).astype(np.int32)
-        self.train_data       = DataGenerator(coords_file[:ids_split[0]],              transform = train_transform, **kwargs)
-        self.val_data         = DataGenerator(coords_file[ids_split[0]:ids_split[1]],  transform = val_transform, **kwargs)
-        self.test_data        = DataGenerator(coords_file[ids_split[1]:ids_split[-1]], transform = val_transform, **kwargs)
+        coords_file           = coords_file.groupby(target).sample(n=n_per_sample)
+        train, val_test       = train_test_split(coords_file, train_size=0.7)
+        val, test             = train_test_split(val_test,test_size =0.66) 
+        self.train_data       = DataGenerator(train, target, transform = train_transform, **kwargs)
+        self.val_data         = DataGenerator(val,   target, transform = val_transform, **kwargs)
+        self.test_data        = DataGenerator(test,  target, transform = val_transform, **kwargs)
 
-    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=False, shuffle=True)
-    def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=False)
-    def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
+    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
+    def val_dataloader(self):   return DataLoader(self.val_data,   batch_size=self.batch_size,   num_workers=10, pin_memory=True, shuffle=True)
+    def test_dataloader(self):  return DataLoader(self.test_data,  batch_size=self.batch_size)
 
 def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
     dataframe  = pd.read_csv(mastersheet)

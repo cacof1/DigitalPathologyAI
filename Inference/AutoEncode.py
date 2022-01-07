@@ -67,6 +67,8 @@ invTrans   = transforms.Compose([
 ## Load the previous  model
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
 trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model)
+output_shape = trainer.model.predict(torch.rand((1, n_classes, dim[0], dim[1]))).size()
+print("Inference",output_shape)
 ## Now train
 test_dataset = DataLoader(DataGenerator(coords_file[:1000], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
 image_out    = trainer.predict(trainer.model,test_dataset)

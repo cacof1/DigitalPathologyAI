@@ -55,14 +55,14 @@ Patches_Folder = sys.argv[3]
 
 ids           = WSIQuery(MasterSheet)
 coords_file   = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
-coords_file   = coords_file[coords_file["tumour_label"] == 1][:40000]
+#coords_file   = coords_file[coords_file["tumour_label"] == 1]
 seed_everything(42)                                                                                                                                                                                           
 
 trainer   = Trainer(gpus=1, max_epochs=5,precision=32, callbacks = callbacks,logger=logger)
 model     = AutoEncoder()
 
 
-summary(model.to('cuda'), (32, 3, 128, 128))
+summary(model.to('cuda'), (32, 3, 128, 128),col_names = ["input_size","output_size"],depth=5)
 dim       = (128,128)
 vis_level = 0
 data      = DataModule(coords_file, batch_size=32, train_transform = train_transform, val_transform = val_transform, inference=False, dim=dim, vis_level = vis_level)
@@ -71,7 +71,7 @@ trainer.fit(model, data)
 
 ## Testing
 test_dataset = DataLoader(DataGenerator(coords_file[:1000], transform = train_transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
-image_out  = trainer.predict(trainer.model,test_dataset)
+image_out    = trainer.predict(trainer.model,test_dataset)
 n = 10
 tmp = iter(test_dataset)
 for j in range(n):

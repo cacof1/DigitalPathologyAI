@@ -326,7 +326,7 @@ class WholeSlideImage(object):
 
     def visHeatmap(self, scores, coords, vis_level=-1, 
                    top_left=None, bot_right=None,
-                   patch_size=(256, 256), 
+                   patch_size=(128, 128), 
                    blank_canvas=False, canvas_color=(220, 20, 50), alpha=0.4, 
                    blur=False, overlap=0.0, 
                    segment=True, use_holes=True,
@@ -393,6 +393,7 @@ class WholeSlideImage(object):
             w, h = region_size
 
         patch_size  = np.ceil(np.array(patch_size) * np.array(scale)).astype(int)
+        print(coords)
         coords = np.ceil(coords * np.array(scale)).astype(int)
         
         print('\ncreating heatmap for: ')
