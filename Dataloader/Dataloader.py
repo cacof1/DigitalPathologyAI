@@ -15,11 +15,13 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import torchvision.models as models
 import numpy as np
 import torch
+import random
 import openslide
 import sys, glob
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
+
 
 class DataGenerator(torch.utils.data.Dataset):
     def __init__(self, coords_file, target, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None):
@@ -54,10 +56,12 @@ class DataGenerator(torch.utils.data.Dataset):
         if(self.inference):
             return image
 
-        else: 
-            label = self.coords[self.target].iloc[id]
-            if self.target_transform: label  = self.target_transform(label)
-            return image,int(np.round(label))
+        else: ## Inference
+            label = int(round(self.coords[self.target].iloc[id]))
+            if self.target_transform:
+                label = self.target_transform(label)
+
+            return image, label
 
 ### DataLoader
 class DataModule(LightningDataModule):
@@ -79,21 +83,30 @@ def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
     dataframe  = pd.read_csv(mastersheet)
     for key,item in kwargs.items(): dataframe = dataframe[dataframe[key]==item]
     ids = dataframe['id'].astype('int')
+
     return sorted(ids)
 
-def LoadFileParameter(ids,svs_folder, patch_folder):
+def LoadFileParameter(ids,svs_folder, patch_folder, fractional_data=1):
     coords_file = pd.DataFrame()    
     for filenb,file_id in enumerate(ids):
         try:
             coords             = pd.read_csv(patch_folder + '/{}.csv'.format(file_id),index_col=0)
+            coords          = coords.astype({"coords_y":int, "coords_x":int})
+
+            if fractional_data<1:
+                coords = coords.sample(frac=fractional_data, random_state=42)
+
             coords['file_id']  = file_id
             coords['wsi_path'] = svs_folder + '/{}.svs'.format(file_id)
+
             if(filenb==0): coords_file = coords
             else: coords_file = coords_file.append(coords)
         except: continue
         
     return coords_file
+
 def SaveFileParameter(df, Patch_Folder, column_to_add, label_to_add):
+
     CoordsPath = Path(Patch_Folder)
     CoordsPath.mkdir(parents=True, exist_ok=True)    
     df[label_to_add]  =  pd.Series(column_to_add, index=df.index)
