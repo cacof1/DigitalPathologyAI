@@ -1,18 +1,14 @@
-import numpy as np
 import sys
 from torchvision import transforms, models
 import torch
-import os
-from torch.utils.data import DataLoader
 import pytorch_lightning as pl
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
+from Dataloader.Dataloader import LoadFileParameter, DataModule, WSIQuery
 from Model.ImageClassifier import ImageClassifier
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from __local.SarcomaClassification.Methods import AppendSarcomaLabel
-from torchmetrics.functional import accuracy, confusion_matrix
 from utils import GetInfo
 
-torch.cuda.empty_cache()
+pl.seed_everything(42, workers=True)
 
 # Example to achieve sarcoma types classification with the ImageClassifier class.
 
@@ -33,8 +29,6 @@ else:
     SVS_Folder = sys.argv[2]
     Patch_Folder = sys.argv[3]
     model_save_path = sys.argv[4]
-
-pl.seed_everything(42, workers=True)
 
 transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
@@ -74,13 +68,12 @@ for cur_id in ids_DF:
 AppendSarcomaLabel(ids, SVS_Folder, Patch_Folder, mapping_file='mapping_SFTl_DF')
 
 # Select subset of all data
-wsi_file, coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder, fractional_data=0.005)  # use .5% of data
+coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder, fractional_data=0.2)  # use .5% of data
 
 # Select a subset of coords files
-coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]  # only keep the patches labeled as tumour
+coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]  # only keep the patches labeled as tumour.
 
-
-data = DataModule(coords_file, wsi_file, train_transform=transform, val_transform=transform, batch_size=40,
+data = DataModule(coords_file, train_transform=transform, val_transform=transform, batch_size=32,
                   inference=False, dim=(256, 256), target='sarcoma_label',
                   tiles_splitting=[0.65, 1.00, 1.00], svs_splitting=True)  # data.train_data, data.val_data
 
@@ -98,18 +91,25 @@ checkpoint_callback = ModelCheckpoint(monitor='val_loss_epoch', dirpath=model_sa
                                       auto_insert_metric_name=False,
                                       mode='min')
 
-trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=50, precision=16,
-                     callbacks=[checkpoint_callback])  # TODO: investigate Deterministic=True.
+# Also save the learning rate (to see what happens with the scheduler)
+lr_monitor = LearningRateMonitor(logging_interval='step')
+
+trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=100, precision=16,
+                     callbacks=[checkpoint_callback, lr_monitor])  # TODO: investigate Deterministic=True.
 
 # Two-labels classification:
 #model = ImageClassifier(lr=1e-3, backbone=models.densenet121(pretrained=False))
 
 # Multi-label classification:
-model = ImageClassifier(lr=1e-3, backbone=models.densenet121(pretrained=False, weight_decay = 1e-4), num_classes=2) #drop_rate=0.5), num_classes=2)
+#model = ImageClassifier(lr=1e-3, backbone=models.resnet18(pretrained=False), num_classes=2) #drop_rate=0.5), num_classes=2)
+model = ImageClassifier(lr=1e-3, backbone=models.densenet121(pretrained=False, drop_rate=0.5), num_classes=2)
+
+#lr_finder = trainer.tuner.lr_find(model, train_dataloader=data.train_dataloader(), val_dataloaders=data.val_dataloader())
+
+# potato
 
 print(torch.cuda.memory_allocated(torch.device))
 trainer.fit(model, data)
-print('NOW USING A DROP RATE!!!')
 
 
 ## 

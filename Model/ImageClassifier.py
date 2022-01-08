@@ -3,6 +3,7 @@ import pytorch_lightning as pl
 import sys
 import torch
 from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn as nn
 from torchmetrics.functional import accuracy
 from torchvision import datasets, models, transforms
@@ -64,7 +65,12 @@ class ImageClassifier(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.lr)
+        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
 
-        return optimizer
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma = 0.5)
+
+        return ([optimizer], [scheduler])
+
+        #return optimizer
 
 
