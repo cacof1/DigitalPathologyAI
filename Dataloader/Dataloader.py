@@ -6,7 +6,8 @@ from torchvision import transforms
 import pandas as pd
 import os
 from pathlib import Path
-
+from sklearn.model_selection import train_test_split
+##Normalization
 from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
 
 from torch.utils.data import Dataset
@@ -23,17 +24,18 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 
 
 class DataGenerator(torch.utils.data.Dataset):
-    def __init__(self, coords_file, dim=(256, 256), vis_level=0, inference=False, transform=None, target_transform=None,
-                 target="tumour_label"):
+
+    def __init__(self, coords_file, target, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None):
+
         super().__init__()
         self.transform = transform
         self.target_transform = target_transform
-        self.coords = coords_file
-        self.vis_level = vis_level
-        self.dim = dim
-        self.inference = inference
-        self.normalizer = TorchMacenkoNormalizer()
-        self.target = target
+        self.coords           = coords_file
+        self.vis_level        = vis_level        
+        self.dim              = dim
+        self.inference        = inference
+        self.normalizer       = TorchMacenkoNormalizer()
+        self.target           = target
 
     def __len__(self):
         return int(self.coords.shape[0])
@@ -52,10 +54,10 @@ class DataGenerator(torch.utils.data.Dataset):
         #    pass
 
         ## Transform - Data Augmentation
-        if self.transform:
-            image = self.transform(image)
+        
+        if self.transform: image  = self.transform(image)
 
-        if self.inference:
+        if(self.inference):
             return image
 
         else:  ## Inference
@@ -69,77 +71,26 @@ class DataGenerator(torch.utils.data.Dataset):
 ### DataLoader
 class DataModule(LightningDataModule):
 
-    def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8,
-                 tiles_splitting=None, svs_splitting=False, **kwargs):
-
+    def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample = 5000, target="file_id", **kwargs):
         super().__init__()
-        self.batch_size = batch_size
-        if tiles_splitting is None:  # to avoid using mutable items in module definition
-            self.tiles_splitting = [0.65, 0.95, 0.05]  # 0.05 is not used, can be inferred from first two.
-        else:
-            self.tiles_splitting = tiles_splitting
+        self.batch_size       = batch_size
+        coords_file           = coords_file.groupby(target).sample(n=n_per_sample)
+        train, val_test       = train_test_split(coords_file, train_size=0.7)
+        val, test             = train_test_split(val_test,test_size =0.66) 
+        self.train_data       = DataGenerator(train, target, transform = train_transform, **kwargs)
+        self.val_data         = DataGenerator(val,   target, transform = val_transform, **kwargs)
+        self.test_data        = DataGenerator(test,  target, transform = val_transform, **kwargs)
 
-        # SVS splitting schemes for training/validating/testing:
-        # svs_splitting=False: will use data form the same svs to generate training/validating/testing datasets.
-        # svs_splitting=True : will use different svs files to generate training/validating/testing datasets, trying to match roughly the proportions of tiles_splitting. Use if you have enough examples. Useful for multi-label classification.
+    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
+    def val_dataloader(self):   return DataLoader(self.val_data,   batch_size=self.batch_size,   num_workers=10, pin_memory=True, shuffle=True)
+    def test_dataloader(self):  return DataLoader(self.test_data,  batch_size=self.batch_size)
 
-        if svs_splitting is True:
-            # Make sure that svs files are roughly balanced throughout classes.
-            class_labels = coords_file[kwargs['target']].unique()
+def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
 
-            train_list_per_class = list()
-            valid_list_per_class = list()
-            test_list_per_class = list()
+    dataframe  = pd.read_csv(mastersheet)
+    for key,item in kwargs.items():
+    	dataframe = dataframe[dataframe[key]==item]
 
-            for class_label in class_labels:
-                curlist = coords_file[coords_file['sarcoma_label'] == class_label].file_id.unique()
-                random.shuffle(curlist)
-                ids_split = np.round(np.array(tiles_splitting) * len(curlist)).astype(np.int32)
-                train_list_per_class.append(curlist[:ids_split[0]])
-                valid_list_per_class.append(curlist[ids_split[0]:ids_split[1]])
-                test_list_per_class.append(curlist[ids_split[1]:ids_split[-1]])
-
-            # list of lists -> list
-            train_list_per_class = [item for sublist in train_list_per_class for item in sublist]
-            valid_list_per_class = [item for sublist in valid_list_per_class for item in sublist]
-            test_list_per_class =  [item for sublist in test_list_per_class for item in sublist]
-
-            # If using a specific seed, must be set here, because pandas is not affected by pl.seed_everything.
-            self.train_data = DataGenerator(
-                coords_file[coords_file.file_id.isin(train_list_per_class)].sample(frac=1, random_state=42),
-                transform=train_transform, **kwargs)
-            self.val_data = DataGenerator(
-                coords_file[coords_file.file_id.isin(valid_list_per_class)].sample(frac=1, random_state=42),
-                transform=val_transform, **kwargs)
-            self.test_data = DataGenerator(
-                coords_file[coords_file.file_id.isin(test_list_per_class)].sample(frac=1, random_state=42),
-                transform=val_transform, **kwargs)
-
-        else:
-            # pool patches from all svs together, then sample randomly among this pool.
-            ids_split = np.round(np.array(tiles_splitting) * len(coords_file)).astype(np.int32)
-            copied_df = coords_file.copy()
-            copied_df = copied_df.sample(frac=1, random_state=42)  # seed not affected by pl.seed_everything.
-            self.train_data = DataGenerator(copied_df[:ids_split[0]], transform=train_transform, **kwargs)
-            self.val_data = DataGenerator(copied_df[ids_split[0]:ids_split[1]], transform=val_transform, **kwargs)
-            self.test_data = DataGenerator(copied_df[ids_split[1]:ids_split[-1]], transform=val_transform, **kwargs)
-
-    # dataloaders are generated using pytorch's dataloader class
-    def train_dataloader(self):
-        return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10)
-
-    def val_dataloader(self):
-        return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10)
-
-    def test_dataloader(self):
-        return DataLoader(self.test_data, batch_size=self.batch_size)
-
-
-def WSIQuery(mastersheet, **kwargs):  ## Select based on queries
-
-    dataframe = pd.read_csv(mastersheet)
-    for key, item in kwargs.items():
-        dataframe = dataframe[dataframe[key] == item]
     ids = dataframe['id'].astype('int')
 
     return sorted(ids)

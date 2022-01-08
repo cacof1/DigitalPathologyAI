@@ -3,10 +3,10 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-
-class Encoder(nn.Module):
-    def __init__(self,depth, wf, in_channels, padding=True, batch_norm=True):
-        super(Encoder, self).__init__()
+from pytorch_lightning import LightningModule
+class UNetEncoder(LightningModule):
+    def __init__(self,depth=6, wf=6, in_channels=3):
+        super(UNetEncoder, self).__init__()
         self.encoder = nn.ModuleList()
         for i in range(depth):
             out_channels = 2**(wf+i)
@@ -19,7 +19,7 @@ class Encoder(nn.Module):
             x = down(x)
         return x
 
-class Decoder(nn.Module):
+class UNetDecoder(LightningModule):
     def __init__(self, depth, wf, in_channels, n_classes, padding=True, batch_norm=True):
         super(Decoder, self).__init__()
         self.decoder = nn.ModuleList()
@@ -35,7 +35,7 @@ class Decoder(nn.Module):
         return self.last(x)            
                 
 class UNet(nn.Module):
-    def __init__(self, in_channels=1, n_classes=3, depth=6, wf=6, padding=True, batch_norm=True):
+    def __init__(self, in_channels=3, n_classes=3, depth=6, wf=6, padding=True, batch_norm=True):
         """
         Implementation of
         U-Net: Convolutional Networks for Biomedical Image Segmentation
@@ -59,8 +59,8 @@ class UNet(nn.Module):
         super(UNet, self).__init__()
         self.padding = padding
         self.depth = depth
-        self.encoder = Encoder(depth, wf, in_channels)
-        self.decoder = Decoder(depth, wf, self.encoder.out_channels, n_classes)
+        self.encoder = UNetEncoder(depth, wf, in_channels)
+        self.decoder = UNetDecoder(depth, wf, self.encoder.out_channels, n_classes)
 
     ## Write the Modules
     def forward(self, x):
@@ -69,12 +69,12 @@ class UNet(nn.Module):
         return x
     
 class UNetDownBlock(nn.Module):
-    def __init__(self, in_size, out_size, padding, batch_norm):
+    def __init__(self, in_size, out_size):
         super(UNetDownBlock, self).__init__()
         self.block = nn.Sequential(
-            nn.Conv2d(in_size, out_size, kernel_size=3, padding=int(padding)),
+            nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
             nn.PReLU(),
-            nn.Conv2d(out_size, out_size, kernel_size=3, padding=int(padding)),
+            nn.Conv2d(out_size, out_size, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_size),            
             nn.PReLU(),
             
