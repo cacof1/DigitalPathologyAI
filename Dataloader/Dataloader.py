@@ -25,17 +25,18 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 
 class DataGenerator(torch.utils.data.Dataset):
 
-    def __init__(self, coords_file, target, dim = (256,256), vis_level = 0, inference=False, transform=None, target_transform = None):
+    def __init__(self, coords_file, target, dim=(256, 256), vis_level=0, inference=False, transform=None,
+                 target_transform=None):
 
         super().__init__()
         self.transform = transform
         self.target_transform = target_transform
-        self.coords           = coords_file
-        self.vis_level        = vis_level        
-        self.dim              = dim
-        self.inference        = inference
-        self.normalizer       = TorchMacenkoNormalizer()
-        self.target           = target
+        self.coords = coords_file
+        self.vis_level = vis_level
+        self.dim = dim
+        self.inference = inference
+        self.normalizer = TorchMacenkoNormalizer()
+        self.target = target
 
     def __len__(self):
         return int(self.coords.shape[0])
@@ -54,10 +55,10 @@ class DataGenerator(torch.utils.data.Dataset):
         #    pass
 
         ## Transform - Data Augmentation
-        
-        if self.transform: image  = self.transform(image)
 
-        if(self.inference):
+        if self.transform: image = self.transform(image)
+
+        if (self.inference):
             return image
 
         else:  ## Inference
@@ -71,25 +72,29 @@ class DataGenerator(torch.utils.data.Dataset):
 ### DataLoader
 class DataModule(LightningDataModule):
 
-    def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample = 5000, target="file_id", **kwargs):
+    def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample=5000,
+                 train_size=0.7, val_size=0.25, target=None, **kwargs):
         super().__init__()
-        self.batch_size       = batch_size
-        coords_file           = coords_file.groupby(target).sample(n=n_per_sample)
-        train, val_test       = train_test_split(coords_file, train_size=0.7)
-        val, test             = train_test_split(val_test,test_size =0.66) 
-        self.train_data       = DataGenerator(train, target, transform = train_transform, **kwargs)
-        self.val_data         = DataGenerator(val,   target, transform = val_transform, **kwargs)
-        self.test_data        = DataGenerator(test,  target, transform = val_transform, **kwargs)
+
+        self.batch_size = batch_size
+        coords_file = coords_file.groupby("file_id").sample(n=n_per_sample)
+        svi = np.unique(coords_file.file_id)
+        np.random.shuffle(svi)
+        train_idx, val_idx, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
+        self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], target, transform=train_transform, **kwargs)
+        self.val_data   = DataGenerator(coords_file[coords_file.file_id.isin(val_idx)], target, transform=val_transform, **kwargs)
+        self.test_data  = DataGenerator(coords_file[coords_file.file_id.isin(test_idx)], target, transform=val_transform, **kwargs)
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
-    def val_dataloader(self):   return DataLoader(self.val_data,   batch_size=self.batch_size,   num_workers=10, pin_memory=True, shuffle=True)
-    def test_dataloader(self):  return DataLoader(self.test_data,  batch_size=self.batch_size)
+    def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
+    def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
 
-def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
 
-    dataframe  = pd.read_csv(mastersheet)
-    for key,item in kwargs.items():
-    	dataframe = dataframe[dataframe[key]==item]
+def WSIQuery(mastersheet, **kwargs):  ## Select based on queries
+
+    dataframe = pd.read_csv(mastersheet)
+    for key, item in kwargs.items():
+        dataframe = dataframe[dataframe[key] == item]
 
     ids = dataframe['id'].astype('int')
 
@@ -97,7 +102,6 @@ def WSIQuery(mastersheet, **kwargs):    ## Select based on queries
 
 
 def LoadFileParameter(ids, svs_folder, patch_folder, fractional_data=1):
-
     coords_file = pd.DataFrame()
     for filenb, file_id in enumerate(ids):
 

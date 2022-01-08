@@ -7,6 +7,7 @@ from Model.ImageClassifier import ImageClassifier
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from __local.SarcomaClassification.Methods import AppendSarcomaLabel
 from utils import GetInfo
+import numpy as np
 
 pl.seed_everything(42, workers=True)
 
@@ -68,14 +69,16 @@ for cur_id in ids_DF:
 AppendSarcomaLabel(ids, SVS_Folder, Patch_Folder, mapping_file='mapping_SFTl_DF')
 
 # Select subset of all data
-coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder, fractional_data=0.2)  # use .5% of data
+coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)#, fractional_data=0.05)  # use .5% of data
 
 # Select a subset of coords files
 coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]  # only keep the patches labeled as tumour.
 
+data_fraction = 0.01  # preserve approximately this amount of data
+n_per_sample = int(data_fraction * len(coords_file)/len(np.unique(coords_file['file_id'])))
 data = DataModule(coords_file, train_transform=transform, val_transform=transform, batch_size=32,
-                  inference=False, dim=(256, 256), target='sarcoma_label',
-                  tiles_splitting=[0.65, 1.00, 1.00], svs_splitting=True)  # data.train_data, data.val_data
+                  inference=False, dim=(256, 256), target='sarcoma_label', n_per_sample=n_per_sample,
+                  train_size=0.7, val_size=0.25)  # data.train_data, data.val_data
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Train model
@@ -83,7 +86,7 @@ data = DataModule(coords_file, train_transform=transform, val_transform=transfor
 # Note: make sure that sarcoma_label column in .csv file has been created prior to running the algorithm:
 
 # Return some stats on what you are doing (for development purposes, knowing your data, etc)
-GetInfo.ShowTrainValTestInfo(coords_file, data)
+GetInfo.ShowTrainValTestInfo(data)
 
 # Save the model with the best monitored property
 checkpoint_callback = ModelCheckpoint(monitor='val_loss_epoch', dirpath=model_save_path,
@@ -106,11 +109,9 @@ model = ImageClassifier(lr=1e-3, backbone=models.densenet121(pretrained=False, d
 
 #lr_finder = trainer.tuner.lr_find(model, train_dataloader=data.train_dataloader(), val_dataloaders=data.val_dataloader())
 
-# potato
-
 print(torch.cuda.memory_allocated(torch.device))
-trainer.fit(model, data)
 
+trainer.fit(model, data)
 
 ## 
 # Sample code for exporting predicted probabilities.
