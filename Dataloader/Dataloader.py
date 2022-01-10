@@ -19,13 +19,10 @@ import random
 import openslide
 import sys, glob
 import torch.nn.functional as F
-from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
 
-
 class DataGenerator(torch.utils.data.Dataset):
-
-    def __init__(self, coords_file, target, dim=(256, 256), vis_level=0, inference=False, transform=None,
+    def __init__(self, coords_file, target="tumour_label", dim=(256, 256), vis_level=0, inference=False, transform=None,
                  target_transform=None):
 
         super().__init__()
@@ -43,30 +40,30 @@ class DataGenerator(torch.utils.data.Dataset):
 
     def __getitem__(self, id):
         # load image
-        wsi_file = WholeSlideImage(self.coords["wsi_path"].iloc[id])
-        image = np.array(wsi_file.wsi.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
-                                                  self.vis_level, self.dim).convert("RGB"))
-
+        wsi_file  = WholeSlideImage(self.coords["wsi_path"].iloc[id])
+        data_dict = {}
+        data_dict["image"] = np.array(wsi_file.wsi.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
+                                                               self.vis_level, self.dim).convert("RGB"))
+                
         ## Normalization -- not great so far, but buggy otherwise
         # try:
-        #    image, H, E  = self.normalizer.normalize(image)
-        #    #image, H, E = MacenkoNormalization(image)
+        #    data_dict["image"], H, E  = self.normalizer.normalize(data_dict["image"])
+        #    #data_dict["image"], H, E = MacenkoNormalization(data_dict["image"])
         # except:
         #    pass
 
         ## Transform - Data Augmentation
 
-        if self.transform: image = self.transform(image)
+        if self.transform: data_dict["image"] = self.transform(data_dict["image"])
 
         if (self.inference):
-            return image
+            return data_dict
 
-        else:  ## Inference
+        else:  
             label = int(round(self.coords[self.target].iloc[id]))
             if self.target_transform:
                 label = self.target_transform(label)
-
-            return image, label
+            return data_dict, label
 
 
 ### DataLoader
@@ -80,14 +77,12 @@ class DataModule(LightningDataModule):
         coords_file = coords_file.groupby("file_id").sample(n=n_per_sample)
         svi = np.unique(coords_file.file_id)
         np.random.shuffle(svi)
-        train_idx, val_idx, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
-        self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], target, transform=train_transform, **kwargs)
-        self.val_data   = DataGenerator(coords_file[coords_file.file_id.isin(val_idx)], target, transform=val_transform, **kwargs)
-        self.test_data  = DataGenerator(coords_file[coords_file.file_id.isin(test_idx)], target, transform=val_transform, **kwargs)
+        train_idx, val_idx = train_test_split(svi,test_size = val_size, train_size = train_size) #, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
+        self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], transform=train_transform, **kwargs)
+        self.val_data   = DataGenerator(coords_file[coords_file.file_id.isin(val_idx)],   transform=val_transform, **kwargs)
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
-    def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
 
 
 def WSIQuery(mastersheet, **kwargs):  ## Select based on queries
@@ -95,9 +90,8 @@ def WSIQuery(mastersheet, **kwargs):  ## Select based on queries
     dataframe = pd.read_csv(mastersheet)
     for key, item in kwargs.items():
         dataframe = dataframe[dataframe[key] == item]
-
+        
     ids = dataframe['id'].astype('int')
-
     return sorted(ids)
 
 

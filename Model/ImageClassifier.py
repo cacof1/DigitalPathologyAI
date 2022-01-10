@@ -31,6 +31,7 @@ class ImageClassifier(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         image, labels = train_batch
+        image         = next(iter(image.values())) ## Take the first value in the dictonnary for single zoom
         logits = self(image)
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
@@ -41,6 +42,7 @@ class ImageClassifier(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         image, labels = val_batch
+        image         = next(iter(image.values())) ## Take the first value in the dictonnary for single zoom
         logits = self(image)
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
@@ -51,6 +53,7 @@ class ImageClassifier(pl.LightningModule):
 
     def testing_step(self, test_batch, batch_idx):
         image, labels = test_batch
+        image         = next(iter(image.values())) ## Take the first value in the dictonnary for single zoom
         logits = self(image)
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
@@ -61,12 +64,12 @@ class ImageClassifier(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         image = batch
+        image = next(iter(image.values())) ## Take the first value in the dictonnary for single zoom
         return softmax(self(image))
 
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.lr)
         #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
-
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma = 0.5)
 
         return ([optimizer], [scheduler])

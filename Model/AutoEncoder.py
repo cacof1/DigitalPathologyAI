@@ -44,23 +44,27 @@ class AutoEncoder(LightningModule):
         #self.loss_fcn  = SSIMLoss(5)
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
         return self.model(x)
-   
+            
     def training_step(self, batch, batch_idx):
+        
         image,label = batch
+        image       = next(iter(image.values())) ## Take the first value in the dictonnary for single zoom
         prediction  = self.forward(image)
-        loss = self.loss_fcn(prediction, image)
+        loss        = self.loss_fcn(prediction, image)
         self.log("loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         image,label = batch
+        image       = next(iter(image.values())) 
         prediction  = self.forward(image)
-        loss = self.loss_fcn(prediction, image)
+        loss        = self.loss_fcn(prediction, image)
         self.log("val_loss", loss)
         return loss
     
     def predict_step(self, batch, batch_idx):
-        image = batch
+        image       = batch
+        image       = next(iter(image.values()))
         prediction  = self.forward(image)
         return prediction
     

@@ -47,7 +47,6 @@ invTrans   = transforms.Compose([
     torchvision.transforms.ToPILImage()
 ])
 
-
 logger         = TensorBoardLogger('lightning_logs',name = 'test')
 MasterSheet    = sys.argv[1]
 SVS_Folder     = sys.argv[2]
