@@ -62,9 +62,9 @@ model     = AutoEncoder()
 
 
 summary(model.to('cuda'), (32, 3, 128, 128),col_names = ["input_size","output_size"],depth=5)
-dim       = (128,128)
-vis_level = 0
-data      = DataModule(coords_file, batch_size=32, train_transform = train_transform, val_transform = val_transform, inference=False, dim=dim, vis_level = vis_level)
+dim_list  = [(128,128)]
+vis_list  = [0]
+data      = DataModule(coords_file, batch_size=32, train_transform = train_transform, val_transform = val_transform, inference=False, dim_list=dim_list, vis_list = vis_list)
 trainer.fit(model, data)
 
 

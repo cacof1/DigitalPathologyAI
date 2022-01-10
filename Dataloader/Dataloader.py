@@ -22,15 +22,15 @@ import torch.nn.functional as F
 from wsi_core.WholeSlideImage import WholeSlideImage
 
 class DataGenerator(torch.utils.data.Dataset):
-    def __init__(self, coords_file, target="tumour_label", dim=(256, 256), vis_level=0, inference=False, transform=None,
+    def __init__(self, coords_file, target="tumour_label", dim_list=[(256, 256)], vis_list=[0], inference=False, transform=None,
                  target_transform=None):
 
         super().__init__()
         self.transform = transform
         self.target_transform = target_transform
         self.coords = coords_file
-        self.vis_level = vis_level
-        self.dim = dim
+        self.vis_list = vis_list
+        self.dim_list = dim_list
         self.inference = inference
         self.normalizer = TorchMacenkoNormalizer()
         self.target = target
@@ -41,23 +41,26 @@ class DataGenerator(torch.utils.data.Dataset):
     def __getitem__(self, id):
         # load image
         wsi_file  = WholeSlideImage(self.coords["wsi_path"].iloc[id])
+
         data_dict = {}
-        data_dict["image"] = np.array(wsi_file.wsi.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
-                                                               self.vis_level, self.dim).convert("RGB"))
+        for dim in self.dim_list:
+            for vis_level in self.vis_list:
+                key = "_".join(map(str,dim))+"_"+str(vis_level)
+                data_dict[key]  = np.array(wsi_file.wsi.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
+                                                                     vis_level, dim).convert("RGB"))
                 
         ## Normalization -- not great so far, but buggy otherwise
         # try:
-        #    data_dict["image"], H, E  = self.normalizer.normalize(data_dict["image"])
-        #    #data_dict["image"], H, E = MacenkoNormalization(data_dict["image"])
+        #    data_dict, H, E  = self.normalizer.normalize(data_dict)
+        #    #data_dict, H, E = MacenkoNormalization(data_dict)
         # except:
         #    pass
 
         ## Transform - Data Augmentation
 
-        if self.transform: data_dict["image"] = self.transform(data_dict["image"])
+        if self.transform: data_dict = {key: self.transform(value) for (key, value) in data_dict.items()}
 
-        if (self.inference):
-            return data_dict
+        if (self.inference): return data_dict
 
         else:  
             label = int(round(self.coords[self.target].iloc[id]))
@@ -65,14 +68,12 @@ class DataGenerator(torch.utils.data.Dataset):
                 label = self.target_transform(label)
             return data_dict, label
 
-
 ### DataLoader
 class DataModule(LightningDataModule):
 
     def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample=5000,
                  train_size=0.7, val_size=0.25, target=None, **kwargs):
         super().__init__()
-
         self.batch_size = batch_size
         coords_file = coords_file.groupby("file_id").sample(n=n_per_sample)
         svi = np.unique(coords_file.file_id)
