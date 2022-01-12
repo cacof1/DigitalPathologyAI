@@ -10,15 +10,21 @@ from torchmetrics.functional import accuracy
 from torch.nn.functional import cross_entropy
 from torch.optim import Adam
 
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor,MaskRCNN
+from torchvision.ops.feature_pyramid_network import LastLevelP6P7
+from torchvision.models.detection.anchor_utils import AnchorGenerator
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone, _validate_trainable_layers
+
+from metrics.pascal_voc_evaluator import get_pascalvoc_metrics
+from metrics.enumerators import MethodAveragePrecision
+        
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision.ops import box_iou
 from utils.COCOengine import evaluate
-
+from Dataloader.DataloaderMitosis import DataModule_Mitosis
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-
 
 def _evaluate_iou(target, pred):
 
@@ -29,13 +35,11 @@ def _evaluate_iou(target, pred):
 
 class FasterRCNN(pl.LightningModule):
     
-    def __init__(self, dataset_train,dataset_test, pre_trained = True, num_classes=2, lr=0.005):
+    def __init__(self, pre_trained = True, num_classes=2, lr=0.005):
         super().__init__()
         self.save_hyperparameters()
         self.num_classes = num_classes
         self.lr = lr
-        self.train_dataset = dataset_train
-        self.valid_dataset = dataset_test
         self.pre_trained = pre_trained
         
         if self.pre_trained:
@@ -56,28 +60,6 @@ class FasterRCNN(pl.LightningModule):
     def forward(self, x, *args, **kwargs):
         return self.model(x)
         
-        
-    def train_dataloader(self):
-        train_loader = torch.utils.data.DataLoader(self.train_dataset,
-                                                   batch_size=1,
-                                                   num_workers=0,
-                                                   shuffle=True,
-                                                   collate_fn=utils_.collate_fn)
-        return train_loader
-
-    def val_dataloader(self):
-        valid_loader = torch.utils.data.DataLoader(self.valid_dataset,
-                                                   batch_size=1,
-                                                   num_workers=0,
-                                                   shuffle=False,
-                                                   collate_fn=utils_.collate_fn)
-
-        # prepare coco evaluator
-#         coco = get_coco_api_from_dataset(valid_loader.dataset)
-#         iou_types = _get_iou_types(self.model)
-#         self.coco_evaluator = CocoEvaluator(coco, iou_types)
-
-        return valid_loader
     
     def training_step(self, batch, batch_idx):
         images, targets, image_ids = batch
@@ -94,24 +76,14 @@ class FasterRCNN(pl.LightningModule):
         images, targets, image_ids = batch
         targets = [{k: v for k, v in t.items()} for t in targets]
         outputs = self.model(images)
-        iou = torch.stack([_evaluate_iou(t, o) for t, o in zip(targets, outs)]).mean()
+        iou = torch.stack([_evaluate_iou(t, o) for t, o in zip(targets, outputs)]).mean()
+        #gt_boxes = [target['boxes'] for target in targets]
+        #gt_boxes = list(chain(*gt_boxes))
 
-        return {"val_iou": iou}
+        #pred_boxes = [output['boxes'] for output in outputs]
+        #pred_boxes = list(chain(*pred_boxes))
 
-    def validation_epoch_end(self,valid_loader):
-        
-        res = {}
-        APitems = ['IoU_0.50_0.95','IoU_0.50','IoU_0.75',
-           'area_small','area_medium','area_large']
-        ARitems = ['maxDets_1','maxDets_10','maxDets_100',
-           'area_small','area_medium','area_large']
-        
-        coco_evaluator = evaluate(self.model, valid_loader, device=device)
-        for i in range(6):            
-            res["AP@{}".format(APitems[i])] = coco_evaluator.coco_eval['bbox'].stats[i]
-            res["AR@{}".format(ARitems[i])] =  coco_evaluator.coco_eval['bbox'].stats[i+6]
-            
-        return res
+        return {'val_iou':iou}       
     
     def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):
         return self(batch)
@@ -123,21 +95,3 @@ class FasterRCNN(pl.LightningModule):
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer,step_size=3,gamma=0.1)
         
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler}
-    
-    
-if __name__ == "__main__":
-
-    filelist = sys.argv[1]
-    
-    data = (filelist, dataset_type = 'MitosisDetection')
-    
-    dataset = Dataset(data,train=True)
-    dataset_test = Dataset(df_all,train=False)
-    indices = torch.randperm(len(dataset)).tolist()
-    dataset_train = Subset(dataset, indices[:-100])
-    dataset_test = Subset(dataset_test, indices[-100:])
-    
-    model = FasterRCNN(dataset_train,dataset_test)
-
-    trainer = pl.Trainer(gpus=1, max_epochs=10)      
-    trainer.fit(model)
