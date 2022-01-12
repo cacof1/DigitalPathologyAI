@@ -14,10 +14,6 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor,MaskRCNN
 from torchvision.ops.feature_pyramid_network import LastLevelP6P7
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone, _validate_trainable_layers
-
-from metrics.pascal_voc_evaluator import get_pascalvoc_metrics
-from metrics.enumerators import MethodAveragePrecision
-        
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision.ops import box_iou
