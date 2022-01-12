@@ -25,7 +25,7 @@ import utils_
 from StainNorm import normalizeStaining
 
 class MaskDataset(Dataset):
-    def __init__(self,df, transforms):
+    def __init__(self,df, transforms,wsi_path,mask_path):
         self.transforms = transforms
         self.df = df
 
@@ -39,7 +39,7 @@ class MaskDataset(Dataset):
         filename = self.df['filename'][i]        
         top_left = (self.df['mitosis_coord_x'][i],self.df['mitosis_coord_y'][i])
         
-        wsi_object = WholeSlideImage('C:/Users/zhuoy/Note/PathAI/data/phh3/h_e/{}.svs'.format(filename))  
+        wsi_object = WholeSlideImage(wsi_path + '/{}.svs'.format(filename))  
 
         img = np.array(wsi_object.wsi.read_region(top_left, vis_level, dim).convert("RGB"))
         num_objs = self.df['num_objs'][i]  
@@ -57,7 +57,7 @@ class MaskDataset(Dataset):
             area = [0]
             
         else:         
-            mask = np.load('C:/Users/zhuoy/Note/PathAI/MitosisDetection/phh3/mitosis_files/{}_loose_mitosis_masks.npy'.format(filename))[index]
+            mask = np.load(mask_path + '/{}_mitosis_masks.npy'.format(filename))[index]
             masks = mask[np.newaxis,:, :]
             boxes = []  
             area = []
