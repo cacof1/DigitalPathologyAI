@@ -29,18 +29,30 @@ def _evaluate_iou(target, pred):
 
 class FasterRCNN(pl.LightningModule):
     
-    def __init__(self, dataset_train,dataset_test, num_classes=3, lr=0.005):
+    def __init__(self, dataset_train,dataset_test, pre_trained = True, num_classes=2, lr=0.005):
         super().__init__()
         self.save_hyperparameters()
         self.num_classes = num_classes
         self.lr = lr
         self.train_dataset = dataset_train
         self.valid_dataset = dataset_test
+        self.pre_trained = pre_trained
         
-        self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
-        num_filters = self.model.roi_heads.box_predictor.cls_score.in_features      
-        self.model.roi_heads.box_predictor = FastRCNNPredictor(num_filters, num_classes)
+        if self.pre_trained:
+            self.model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
+            in_features = self.model.roi_heads.box_predictor.cls_score.in_features
+            self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+            in_features_mask = self.model.roi_heads.mask_predictor.conv5_mask.in_channels
+            hidden_layer = 256
+            self.model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,hidden_layer,num_classes)
+        else:
+            backbone = resnet_fpn_backbone('resnet50', pretrained=True, trainable_layers=3)
 
+            anchor_generator = AnchorGenerator(sizes=(16, 32,64,128,256), aspect_ratios=(0.75, 1.0, 1.35))
+            roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'], output_size=7, sampling_ratio=2)
+            mask_roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'],output_size=14,sampling_ratio=2)
+            self.model = MaskRCNN(backbone, num_classes=num_classes, rpn_anchor_generator=anchor_generator, box_roi_pool=roi_pooler,mask_roi_pool=mask_roi_pooler)
+                
     def forward(self, x, *args, **kwargs):
         return self.model(x)
         
