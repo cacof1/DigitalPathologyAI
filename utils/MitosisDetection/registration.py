@@ -16,11 +16,9 @@ import random
 import pickle
 from functions import get_homography, visualize_registration, visualize_coords
 
-basepath = 'C:/Users/zhuoy/Note/PathAI/data/'
-filename = 210000010
+basepath = sys[1]
+filename = sys[2]
 dim = (256,256)
-
-#coords_file = pd.read_csv(basepath + 'phh3/h_e/{}/patches/{}_16112021.csv'.format(dim[0],filename))
 
 coords_file = pd.read_csv(basepath + 'phh3/h_e/{}/patches/{}.csv'.format(dim[0],filename))
 coords_file.drop('Unnamed: 0',axis=1,inplace=True)
@@ -60,12 +58,10 @@ visualize_coords(trans_coords,phh3_object,vis_level)
 
 phh3_coords = np.array([x * level_downsamples for x in trans_coords])
 
-#%%
-save_name = 'loose_mitosis'
 vis_level = 0
-#brown = (100, 80, 80)
-brown = (255, 150, 150)
-black = (0,0,0)
+#upper_limit = (100, 80, 80)
+upper_limit = (255, 150, 150)
+lower_limit = (0,0,0)
 count = 0
 std = 30
 mitosis_coords = []
@@ -78,7 +74,7 @@ for i in range(he_coords.shape[0]):
     phh3 = np.array(phh3_object.wsi.read_region(phh3_coord, vis_level, dim).convert("RGB"))
     #h_e = np.array(h_e_object.wsi.read_region(he_coord, vis_level, dim).convert("RGB"))
     
-    mitosis_mask = cv2.inRange(phh3, black, brown)
+    mitosis_mask = cv2.inRange(phh3, lower_limit, upper_limit)
     
     if np.mean(mitosis_mask) > 1:           
             
@@ -146,8 +142,8 @@ coords_df['phh3_coord_y'] = new_coords[:,1]
 coords_df['filename'] = [filename]*coords_df.shape[0]
 masks = np.array(masks)      
 
-coords_df.to_csv('mitosis_files/{}_{}_coords.csv'.format(filename,save_name),index=False)
-np.save('mitosis_files/{}_{}_masks.npy'.format(filename,save_name),masks)
+coords_df.to_csv(basepath + '/mitosis_files/{}_mitosis_coords.csv'.format(filename),index=False)
+np.save(basepath + '/mitosis_files/{}_mitosis_masks.npy'.format(filename),masks)
 
 
 
