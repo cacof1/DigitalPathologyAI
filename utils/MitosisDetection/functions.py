@@ -103,7 +103,7 @@ def visualize_coords(coords,wsi_object,vis_level=-1):
     else:
         print('Figure size out of range')
         
-def visualize_mitosis(df,save_name='mitosis',if_check = True,vis_level=0, dim=(256,256)):
+def visualize_mitosis(df, basepath, if_check = True,vis_level=0, dim=(256,256)):
     
     labels = []
     
@@ -112,15 +112,13 @@ def visualize_mitosis(df,save_name='mitosis',if_check = True,vis_level=0, dim=(2
         he_top = (df['mitosis_coord_x'][i],df['mitosis_coord_y'][i])
         phh3_top = (df['phh3_coord_x'][i],df['phh3_coord_y'][i])
         index = df['index'][i]
-        
-        #h_e_object = WholeSlideImage('C:/Users/zhuoy/Note/PathAI/data/phh3/h_e/{}_16112021.tif'.format(filename))  
-        #phh3_object = WholeSlideImage('C:/Users/zhuoy/Note/PathAI/data/phh3/phh3/{}_immuno.tif'.format(filename))
-        h_e_object = WholeSlideImage('C:/Users/zhuoy/Note/PathAI/data/phh3/h_e/{}.svs'.format(filename))  
-        phh3_object = WholeSlideImage('C:/Users/zhuoy/Note/PathAI/data/phh3/phh3/{}_pHH3.svs'.format(filename))
+
+        h_e_object = WholeSlideImage(basepath + '/phh3/h_e/{}.svs'.format(filename))  
+        phh3_object = WholeSlideImage(basepath + '/phh3/phh3/{}_pHH3.svs'.format(filename))
         h_e = np.array(h_e_object.wsi.read_region(he_top, vis_level, dim).convert("RGB"))
         phh3 = np.array(phh3_object.wsi.read_region(phh3_top, vis_level, dim).convert("RGB"))
         
-        mask = np.load('mitosis_files/{}_{}_masks.npy'.format(filename,save_name))[index]
+        mask = np.load(basepath + '/mitosis_files/{}_mitosis_masks.npy'.format(filename))[index]
         
         masked = np.ma.masked_where(mask == 0, mask)
 
@@ -137,8 +135,6 @@ def visualize_mitosis(df,save_name='mitosis',if_check = True,vis_level=0, dim=(2
         plt.imshow(phh3)
         plt.axis('off')
         plt.title('No {}/{}'.format(i,df.shape[0]))
-        #plt.title('No {}/{}: {}'.format(i,df.shape[0],he_top))
-        #plt.title('{}'.format(phh3_top))
     
         plt.show()
         
