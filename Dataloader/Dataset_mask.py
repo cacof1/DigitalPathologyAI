@@ -15,19 +15,19 @@ import math
 import pandas as pd
 from wsi_core.WholeSlideImage import WholeSlideImage
 from torch.utils.data import DataLoader
-from torch.utils.data import Dataset,Subset
 from torchvision import datasets, models
 import torchvision
-
 import transforms as T
 from engine import train_one_epoch, evaluate
-import utils_
 from StainNorm import normalizeStaining
 
-class MaskDataset(Dataset):
-    def __init__(self,df, transforms,wsi_path,mask_path):
+
+class DataGenerator_Mitosis(torch.utils.data.Dataset):
+    def __init__(self,df, wsi_path, mask_path,transform=None):
         self.transforms = transforms
         self.df = df
+        self.normalizer = TorchMacenkoNormalizer()
+        self.transform = transform
 
     def __getitem__(self, i):
         # load images and masks
@@ -92,10 +92,27 @@ class MaskDataset(Dataset):
         target["iscrowd"] = iscrowd        
         target["masks"] = masks
 
-        if self.transforms is not None:
-            img, target = self.transforms(img, target)
+        if self.transform is not None:
+            img, target = self.transform(img,target)
             
         return img, target
 
     def __len__(self):
         return self.df.shape[0]
+    
+    
+    
+class DataModule_Mitosis(LightningDataModule):
+    def __init__(self, mitosis_file, wsi_path, mask_path, batch_size = 1, train_transform = None, val_transform = None,  **kwargs):
+        super().__init__()
+        self.batch_size      = batch_size        
+          
+        ids_split            = np.round(np.array([0.7, 0.2, 1.0])*len(mitosis_file)).astype(np.int32)
+        self.train_data      = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], wsi_path, mask_path, transform = train_transform, **kwargs)
+        self.val_data        = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], wsi_path, mask_path,  transform = val_transform, **kwargs)
+        self.test_data       = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], wsi_path, mask_path, transform = val_transform, **kwargs)
+
+
+    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=0)
+    def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size,num_workers=0)
+    def test_dataloader(self):  return DataLoader(self.test_data, batch_size=self.batch_size)
