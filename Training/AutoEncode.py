@@ -14,7 +14,6 @@ import torchvision.models as models
 import numpy as np
 import torch
 from torchinfo import summary
-
 import openslide
 import sys, glob
 import torch.nn as nn
@@ -25,16 +24,21 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping,ModelSumm
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
 from Model.AutoEncoder import AutoEncoder
 from pytorch_lightning.loggers import TensorBoardLogger
+import toml
+
+
+config = toml.load(sys.argv[1])
 checkpoint_callback = ModelCheckpoint(
-    dirpath='./',
+    dirpath=config['MODEL']['Model_Save_Path'],
     monitor='val_loss',
-    filename="model_AutoEncoder",#.{epoch:02d}-{val_loss:.2f}.h5",
+    filename=config['MODEL']['Name'],#.{epoch:02d}-{val_loss:.2f}.h5",
     save_top_k=1,
     mode='min')
 
 callbacks = [
     checkpoint_callback
     ]
+
 train_transform = transforms.Compose([
     transforms.ToTensor(),
 ])
@@ -47,24 +51,24 @@ invTrans   = transforms.Compose([
     torchvision.transforms.ToPILImage()
 ])
 
-logger         = TensorBoardLogger('lightning_logs',name = 'test')
-MasterSheet    = sys.argv[1]
-SVS_Folder     = sys.argv[2]
-Patches_Folder = sys.argv[3]
+logger         = TensorBoardLogger('lightning_logs',name = config['MODEL']['Name'])
+MasterSheet    = config['DATA']['Mastersheet']
+SVS_Folder     = config['DATA']['SVS_Folder']
+Patches_Folder = config['DATA']['Patches_Folder']
 
 ids           = WSIQuery(MasterSheet)
 coords_file   = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
-#coords_file   = coords_file[coords_file["tumour_label"] == 1]
-seed_everything(42)                                                                                                                                                                                           
+coords_file   = coords_file[coords_file["tumour_label"] == 1]
+print(coords_file)
 
-trainer   = Trainer(gpus=1, max_epochs=5,precision=32, callbacks = callbacks,logger=logger)
-model     = AutoEncoder()
-
+seed_everything(config['MODEL']['RANDOM_SEED'])
+trainer   = Trainer(gpus=1, max_epochs=config['MODEL']['Max_Epochs'],precision=config['MODEL']['Precision'], callbacks = callbacks,logger=logger)
+model     = AutoEncoder(config = config)
 
 summary(model.to('cuda'), (32, 3, 128, 128),col_names = ["input_size","output_size"],depth=5)
-dim_list  = [(128,128)]
-vis_list  = [0]
-data      = DataModule(coords_file, batch_size=32, train_transform = train_transform, val_transform = val_transform, inference=False, dim_list=dim_list, vis_list = vis_list)
+dim_list  = config['DATA']['dim']
+vis_list  = config['DATA']['vis']
+data      = DataModule(coords_file, batch_size=config['MODEL']['Batch_Size'], train_transform = train_transform, val_transform = val_transform, inference=False, dim_list=dim_list, vis_list = vis_list, n_per_sample=config['DATA']['n_per_sample'])
 trainer.fit(model, data)
 
 
@@ -77,6 +81,7 @@ for j in range(n):
     plt.figure(figsize=(20, 4))
     image = next(tmp)
     for i in range(n):
+        print(image)
         img      = invTrans(image[i])
         img_out  = invTrans(image_out[j][i])
         ax = plt.subplot(2, n, i + 1)

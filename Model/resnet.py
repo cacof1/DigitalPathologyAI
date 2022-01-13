@@ -3,9 +3,9 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from collections import OrderedDict
-
+from pytorch_lightning import LightningModule
 def conv_bn(in_channels, out_channels, *args, **kwargs):
-    return nn.Sequential(OrderedDict(
+      return nn.Sequential(OrderedDict(
         {'conv': nn.Conv2d(in_channels, out_channels,kernel_size=3, padding=1, *args, **kwargs),
          'bn': nn.BatchNorm2d(out_channels) }))
 
@@ -26,7 +26,8 @@ def shortcut_cn_up(in_channels, expanded_channels, downsampling):
         {'conv' : nn.ConvTranspose2d(in_channels, expanded_channels, kernel_size=1, stride=downsampling, bias=False, output_padding=output_padding),
          'bn' : nn.BatchNorm2d(expanded_channels)}))
 
-class ResNetResidualBlock(nn.Module): ## Basic residual block class for both and upsampling
+
+class ResNetResidualBlock(LightningModule): ## Basic residual block class for both and upsampling
     expansion = 1
     def __init__(self, in_channels, out_channels, conv = conv_bn, shortcut_fn = shortcut_cn, expansion=1, downsampling=1, activation=nn.ReLU, *args, **kwargs):
         super().__init__()
@@ -69,9 +70,10 @@ class ResNetResidualBlock(nn.Module): ## Basic residual block class for both and
         return x
     
 
-class ResNetLayer(nn.Module):
+class ResNetLayer(LightningModule):
     def __init__(self, in_channels, out_channels, block=ResNetResidualBlock, n=1, *args, **kwargs):
         super().__init__()
+
         #We perform downsampling directly by convolutional layers that have a stride of 2.
         downsampling = 2 if in_channels != out_channels else 1
         self.blocks = nn.Sequential(
@@ -84,18 +86,20 @@ class ResNetLayer(nn.Module):
         return x
 
 
-class ResNetEncoder(nn.Module):
+class ResNetEncoder(LightningModule):
     """
     ResNet encoder composed by decreasing size with increasing features.
     """
     def __init__(self, in_channels=3, wf=5, depth =4, activation=nn.ReLU, block=ResNetResidualBlock, *args,**kwargs):
         super().__init__()
         self.out_channels = 0
+        self.conv = conv_bn
+        self.shortcut_fn = shortcut_cn
         self.blocks = nn.ModuleList()
         for i in range(depth):
             n = 2         
             self.out_channels = 2**(wf+i)
-            self.blocks.append(ResNetLayer(in_channels * block.expansion,  self.out_channels, n=n, activation=activation, block=block, *args, **kwargs))
+            self.blocks.append(ResNetLayer(in_channels * block.expansion,  self.out_channels, n=n, activation=activation, block=block, conv = self.conv, shortcut_fn = self.shortcut_fn, *args, **kwargs))
             in_channels = self.out_channels
 
     def forward(self, x):
@@ -104,18 +108,20 @@ class ResNetEncoder(nn.Module):
             x = block(x)
         return x
 
-class ResnetDecoder(nn.Module):
+class ResNetDecoder(LightningModule):
     """
     ResNet decoder composed by increasing size with decreasing features.
     """
-    def __init__(self, in_channels=512, wf= 5, depth=4, n_classes =3,  activation=nn.ReLU, block=ResNetResidualBlock, *args,**kwargs):
+    def __init__(self, in_channels=512, wf= 5, depth=4, n_classes =3, activation=nn.ReLU, block=ResNetResidualBlock, *args,**kwargs):
         super().__init__()
         self.blocks = nn.ModuleList()
+        self.conv = conv_bn_up
+        self.shortcut_fn = shortcut_cn_up
         self.out_channels = 0
         for i in reversed(range(depth)):
             n = 2         
             self.out_channels = 2**(wf+i)
-            self.blocks.append(ResNetLayer(in_channels * block.expansion,  self.out_channels, n=n, activation=activation, block=block, *args, **kwargs))
+            self.blocks.append(ResNetLayer(in_channels * block.expansion,  self.out_channels, n=n, activation=activation, block=block, conv = self.conv, shortcut_fn = self.shortcut_fn, *args, **kwargs))
             in_channels = self.out_channels
 
         self.last    = nn.ConvTranspose2d(self.out_channels, n_classes, kernel_size=2,stride=2)        
@@ -127,12 +133,12 @@ class ResnetDecoder(nn.Module):
         return x
 
     
-class ResNet(nn.Module):
+class ResNet(LightningModule):
     
     def __init__(self, in_channels, *args, **kwargs):
         super().__init__()
-        self.encoder = ResNetEncoder(in_channels, conv = conv_bn,    shortcut_fn = shortcut_cn, *args, **kwargs)
-        self.decoder = ResnetDecoder(self.encoder.out_channels, *args,  conv = conv_bn_up, shortcut_fn = shortcut_cn_up, *args, **kwargs)
+        self.encoder = ResNetEncoder(in_channels, *args, **kwargs)
+        self.decoder = ResNetDecoder(self.encoder.out_channels,  *args, **kwargs)
 
         
     def forward(self, x):

@@ -77,7 +77,6 @@ class UNetDownBlock(nn.Module):
             nn.Conv2d(out_size, out_size, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_size),            
             nn.PReLU(),
-            
             nn.Conv2d(out_size, out_size, kernel_size=2, padding=0,stride=2),
             nn.PReLU(),            
         )

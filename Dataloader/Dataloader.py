@@ -72,13 +72,15 @@ class DataGenerator(torch.utils.data.Dataset):
 class DataModule(LightningDataModule):
 
     def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample=5000,
-                 train_size=0.7, val_size=0.25, target=None, **kwargs):
+                 train_size=0.7, val_size=0.3, target=None, **kwargs):
         super().__init__()
         self.batch_size = batch_size
-        coords_file = coords_file.groupby("file_id").sample(n=n_per_sample)
+        #coords_file = coords_file.groupby("file_id").sample(n=n_per_sample)
+        coords_file = coords_file.groupby("file_id").sample(frac=1)
         svi = np.unique(coords_file.file_id)
+        print(svi)
         np.random.shuffle(svi)
-        train_idx, val_idx = train_test_split(svi,test_size = val_size, train_size = train_size) #, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
+        train_idx, val_idx = train_test_split(svi, test_size = val_size, train_size = train_size) #, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
         self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], transform=train_transform, **kwargs)
         self.val_data   = DataGenerator(coords_file[coords_file.file_id.isin(val_idx)],   transform=val_transform, **kwargs)
 

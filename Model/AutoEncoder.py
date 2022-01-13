@@ -24,22 +24,26 @@ from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator, 
 
 ## Module - Models
 from Model.unet import UNet,UNetUpBlock, UNetDownBlock, UNetEncoder
-from Model.resnet import ResNet, ResNetResidualBlock, ResNetEncoder
+from Model.resnet import ResNet, ResNetResidualBlock, ResNetEncoder, ResNetDecoder
 
 ## Main Model
 class AutoEncoder(LightningModule):
-    def __init__(self,backbone=models.densenet121(),n_classes = 3,dim = (128,128)) -> None:
+    def __init__(self, config) -> None:
         super().__init__()
-        self.encoder = UNetEncoder(in_channels=3, depth=6, wf =6)
+        self.config = config
+        #self.encoder = UNetEncoder(in_channels=3, depth=6, wf =5)
+        self.encoder  = ResNetEncoder(in_channels=3, depth=6, wf =4)
+        backbone      = getattr(models, self.config["MODEL"]["Backbone"])()
         #self.encoder = Encoder(backbone = backbone)
 
-        output_shape = self.encoder(torch.rand((1, n_classes, dim[0], dim[1]))).size()
-        self.decoder = Decoder(output_shape = output_shape)
+        output_shape = self.encoder(torch.rand((1, self.config["DATA"]["n_classes"], self.config["DATA"]["dim"][0][0], self.config["DATA"]["dim"][0][1] ))).size()
+        #self.decoder = Decoder(output_shape = output_shape)
+        self.decoder = ResNetDecoder(in_channels = output_shape[1], n_classes =3, depth =6, wf = 4)
         self.model = nn.Sequential(
             self.encoder,
             self.decoder
         )
-        self.loss_fcn = torch.nn.MSELoss()
+        self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["loss_function"])()
         #self.loss_fcn_2 = torch.nn.L1Loss()        
         #self.loss_fcn  = SSIMLoss(5)
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -69,8 +73,8 @@ class AutoEncoder(LightningModule):
         return prediction
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(),lr=1e-3,eps=1e-7)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1,verbose=True)
+        optimizer = torch.optim.Adam(self.parameters(),lr=self.config["OPTIMIZER"]["lr"],eps=self.config["OPTIMIZER"]["eps"])
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.config["OPTIMIZER"]["step_size"], gamma=self.config["OPTIMIZER"]["gamma"],verbose=True)
         return [optimizer], [scheduler]
     
 class Encoder(LightningModule):
