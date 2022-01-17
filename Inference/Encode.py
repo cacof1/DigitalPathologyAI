@@ -46,16 +46,18 @@ from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGene
 ## Module - Models
 from Model.AutoEncoder import AutoEncoder
 
-seed_everything(42)
 
+config   = toml.load(sys.argv[1])
 
 ##First create a master loader
-MasterSheet      = sys.argv[1]
-SVS_Folder       = sys.argv[2]
-Patch_Folder     = sys.argv[3]
-Pretrained_Model = sys.argv[4]
 
-ids              = WSIQuery(MasterSheet,id=484760)
+MasterSheet    = config['DATA']['Mastersheet']
+SVS_Folder     = config['DATA']['SVS_Folder']
+Patches_Folder = config['DATA']['Patches_Folder']
+Pretrained_Model = sys.argv[2]
+
+seed_everything(config['MODEL']['RANDOM_SEED'])
+ids              = WSIQuery(MasterSheet)
 coords_file      = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
 coords_file      = coords_file[coords_file["tumour_label"] == 1][:10000].reset_index()
 
@@ -69,7 +71,7 @@ invTrans   = transforms.Compose([
 
 ## Load the previous  model
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
-trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model).encoder
+trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model, config).encoder
 
 ## Now predict
 

@@ -78,7 +78,6 @@ class DataModule(LightningDataModule):
         #coords_file = coords_file.groupby("file_id").sample(n=n_per_sample)
         coords_file = coords_file.groupby("file_id").sample(frac=1)
         svi = np.unique(coords_file.file_id)
-        print(svi)
         np.random.shuffle(svi)
         train_idx, val_idx = train_test_split(svi, test_size = val_size, train_size = train_size) #, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
         self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], transform=train_transform, **kwargs)

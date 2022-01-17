@@ -27,17 +27,18 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import toml
 
 
-config = toml.load(sys.argv[1])
-checkpoint_callback = ModelCheckpoint(
-    dirpath=config['MODEL']['Model_Save_Path'],
-    monitor='val_loss',
-    filename=config['MODEL']['Name'],#.{epoch:02d}-{val_loss:.2f}.h5",
-    save_top_k=1,
-    mode='min')
 
-callbacks = [
-    checkpoint_callback
-    ]
+config   = toml.load(sys.argv[1])
+name     = config['MODEL']['BaseModel'] +"_"+ config['MODEL']['Backbone']+ "_wf" + str(config['MODEL']['wf']) + "_depth" + str(config['MODEL']['depth'])
+logger   = TensorBoardLogger('lightning_logs',name = name)
+checkpoint_callback = ModelCheckpoint(
+    dirpath     = logger.log_dir,
+    monitor     = 'val_loss',
+    filename    = name,
+    save_top_k  = 1,
+    mode        = 'min')
+
+callbacks = [checkpoint_callback]
 
 train_transform = transforms.Compose([
     transforms.ToTensor(),
@@ -51,7 +52,6 @@ invTrans   = transforms.Compose([
     torchvision.transforms.ToPILImage()
 ])
 
-logger         = TensorBoardLogger('lightning_logs',name = config['MODEL']['Name'])
 MasterSheet    = config['DATA']['Mastersheet']
 SVS_Folder     = config['DATA']['SVS_Folder']
 Patches_Folder = config['DATA']['Patches_Folder']
@@ -79,9 +79,9 @@ n = 10
 tmp = iter(test_dataset)
 for j in range(n):
     plt.figure(figsize=(20, 4))
-    image = next(tmp)
+    image  = next(tmp)
+    image  = next(iter(image.values())) 
     for i in range(n):
-        print(image)
         img      = invTrans(image[i])
         img_out  = invTrans(image_out[j][i])
         ax = plt.subplot(2, n, i + 1)
