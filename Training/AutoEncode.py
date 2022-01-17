@@ -58,17 +58,26 @@ Patches_Folder = config['DATA']['Patches_Folder']
 
 ids           = WSIQuery(MasterSheet, config)
 coords_file   = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
-coords_file   = coords_file[coords_file["tumour_label"] == 1]
-print(coords_file)
+#coords_file   = coords_file[coords_file["tumour_label"] == 1]
+
 
 seed_everything(config['MODEL']['RANDOM_SEED'])
 trainer   = Trainer(gpus=1, max_epochs=config['MODEL']['Max_Epochs'],precision=config['MODEL']['Precision'], callbacks = callbacks,logger=logger)
 model     = AutoEncoder(config = config)
 
 summary(model.to('cuda'), (32, 3, 128, 128),col_names = ["input_size","output_size"],depth=5)
-dim_list  = config['DATA']['dim']
-vis_list  = config['DATA']['vis']
-data      = DataModule(coords_file, batch_size=config['MODEL']['Batch_Size'], train_transform = train_transform, val_transform = val_transform, inference=False, dim_list=dim_list, vis_list = vis_list, n_per_sample=config['DATA']['n_per_sample'])
+
+data      = DataModule(
+    coords_file,
+    batch_size       = config['MODEL']['Batch_Size'],
+    train_transform  = train_transform,
+    val_transform    = val_transform,
+    inference        = False,
+    dim_list         = config['DATA']['dim'],
+    vis_list         = config['DATA']['vis'],
+    n_per_sample     = config['DATA']['n_per_sample'],
+    target           = config['DATA']['target'] 
+)
 trainer.fit(model, data)
 
 
