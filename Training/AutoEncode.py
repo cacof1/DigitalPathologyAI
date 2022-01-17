@@ -56,7 +56,7 @@ MasterSheet    = config['DATA']['Mastersheet']
 SVS_Folder     = config['DATA']['SVS_Folder']
 Patches_Folder = config['DATA']['Patches_Folder']
 
-ids           = WSIQuery(MasterSheet)
+ids           = WSIQuery(MasterSheet, config)
 coords_file   = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
 coords_file   = coords_file[coords_file["tumour_label"] == 1]
 print(coords_file)

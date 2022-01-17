@@ -87,12 +87,14 @@ class DataModule(LightningDataModule):
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
 
 
-def WSIQuery(mastersheet, **kwargs):  ## Select based on queries
+def WSIQuery(mastersheet, config, **kwargs):  ## Select based on queries
 
     dataframe = pd.read_csv(mastersheet)
     for key, item in kwargs.items():
         dataframe = dataframe[dataframe[key] == item]
-        
+
+    for key, item in config['CRITERIA'].items():
+        dataframe = dataframe[dataframe[key].isin(item)]
     ids = dataframe['id'].astype('int')
     return sorted(ids)
 
