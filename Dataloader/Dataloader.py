@@ -68,7 +68,7 @@ class DataGenerator(torch.utils.data.Dataset):
                 label = self.target_transform(label)
             return data_dict, label
 
-### DataLoader
+
 class DataModule(LightningDataModule):
 
     def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample=5000,
@@ -86,18 +86,12 @@ class DataModule(LightningDataModule):
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
     def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
 
-
 def WSIQuery(mastersheet, config, **kwargs):  ## Select based on queries
-
-    dataframe = pd.read_csv(mastersheet)
-    for key, item in kwargs.items():
-        dataframe = dataframe[dataframe[key] == item]
 
     for key, item in config['CRITERIA'].items():
         dataframe = dataframe[dataframe[key].isin(item)]
     ids = dataframe['id'].astype('int')
     return sorted(ids)
-
 
 def LoadFileParameter(ids, svs_folder, patch_folder, fractional_data=1):
     coords_file = pd.DataFrame()
