@@ -1,9 +1,5 @@
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
 import pytorch_lightning as pl
-import sys
 import torch
-from torch.optim import Adam
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn as nn
 from torchmetrics.functional import accuracy
 from torchvision import datasets, models, transforms
@@ -14,10 +10,16 @@ class ImageClassifier(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.backbone = getattr(models, self.config["MODEL"]["Backbone"])()
+
+        self.backbone = getattr(models, config['MODEL']['Backbone'])
+        if 'densenet' in config['MODEL']['Backbone']:
+            self.backbone = self.backbone(pretrained=config['MODEL']['Pretrained'], drop_rate=config['MODEL']['Drop_Rate'])
+        else:
+            self.backbone = self.backbone(pretrained=config['MODEL']['Pretrained'])
+
         self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["loss_function"])()
         self.activation = getattr(torch.nn, self.config["MODEL"]["activation"])()
-        out_feats = list(backbone.children())[-1].out_features
+        out_feats = list(self.backbone.children())[-1].out_features
         self.model = nn.Sequential(
             self.backbone,
             nn.Linear(out_feats, 512),
@@ -67,8 +69,9 @@ class ImageClassifier(pl.LightningModule):
         return softmax(self(image))
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(),lr=self.config["OPTIMIZER"]["lr"],eps=self.config["OPTIMIZER"]["eps"])
-        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.config["OPTIMIZER"]["step_size"], gamma=self.config["OPTIMIZER"]["gamma"],verbose=True)  # step size 5, gamma =0.5
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.config["OPTIMIZER"]["lr"],
+                                     eps=self.config["OPTIMIZER"]["eps"])
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.config["OPTIMIZER"]["step_size"],
+                                                    gamma=self.config["OPTIMIZER"]["gamma"])  # step size 5, gamma =0.5
         return ([optimizer], [scheduler])
 
