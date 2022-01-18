@@ -69,7 +69,7 @@ class DataGenerator(torch.utils.data.Dataset):
 class DataModule(LightningDataModule):
 
     def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample=5000,
-                 train_size=0.7, val_size=0.3, target=None, **kwargs):
+                 train_size=0.7, val_size=0.3, **kwargs):
         super().__init__()
         self.batch_size = batch_size
         coords_file = coords_file.groupby("file_id").sample(n=n_per_sample, replace=False)
