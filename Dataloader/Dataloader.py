@@ -9,23 +9,14 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 ##Normalization
 from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
-
-from torch.utils.data import Dataset
-from pytorch_lightning.loggers import TensorBoardLogger
-import torchvision.models as models
 import numpy as np
 import torch
-import random
-import openslide
-import sys, glob
-import torch.nn.functional as F
-from sklearn.model_selection import train_test_split
 from wsi_core.WholeSlideImage import WholeSlideImage
 
 
 class DataGenerator(torch.utils.data.Dataset):
 
-    def __init__(self, coords_file, target, dim=(256, 256), vis_level=0, inference=False, transform=None,
+    def __init__(self, coords_file, target=None, dim=(256, 256), vis_level=0, inference=False, transform=None,
                  target_transform=None):
 
         super().__init__()
@@ -77,7 +68,7 @@ class DataModule(LightningDataModule):
         super().__init__()
 
         self.batch_size = batch_size
-        coords_file = coords_file.groupby("file_id").sample(n=n_per_sample)
+        coords_file = coords_file.groupby("file_id").sample(n=n_per_sample, replace=False)  # to remove - just testing...
         svi = np.unique(coords_file.file_id)
         np.random.shuffle(svi)
         train_idx, val_idx, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
@@ -101,17 +92,13 @@ def WSIQuery(mastersheet, **kwargs):  ## Select based on queries
     return sorted(ids)
 
 
-def LoadFileParameter(ids, svs_folder, patch_folder, fractional_data=1):
+def LoadFileParameter(ids, svs_folder, patch_folder):
     coords_file = pd.DataFrame()
     for filenb, file_id in enumerate(ids):
 
         try:
             coords = pd.read_csv(patch_folder + '/{}.csv'.format(file_id), index_col=0)
             coords = coords.astype({"coords_y": int, "coords_x": int})
-
-            if fractional_data < 1:
-                coords = coords.sample(frac=fractional_data, random_state=42)
-
             coords['file_id'] = file_id
             coords['wsi_path'] = svs_folder + '/{}.svs'.format(file_id)
 
@@ -120,6 +107,7 @@ def LoadFileParameter(ids, svs_folder, patch_folder, fractional_data=1):
             else:
                 coords_file = coords_file.append(coords)
         except:
+            print('Unable to find patch data for file {}.'.format(file_id))
             continue
 
     return coords_file
