@@ -86,25 +86,28 @@ def WSIQuery(mastersheet, config, **kwargs):  ## Select based on queries
     dataframe = pd.read_csv(mastersheet)
     for key, item in config['CRITERIA'].items():
         dataframe = dataframe[dataframe[key].isin(item)]
-    ids = dataframe['id'].astype('int')
-    return sorted(ids)
+    ids = dataframe['id']
+    print(ids)
+    return ids
 
 def LoadFileParameter(ids, svs_folder, patch_folder):
     coords_file = pd.DataFrame()
     for filenb, file_id in enumerate(ids):
 
         try:
-            coords = pd.read_csv(patch_folder + '/{}.csv'.format(file_id), index_col=0)
+            PatchPath = Path(patch_folder, '{}.csv'.format(file_id))
+            WSIPath = Path(svs_folder, '{}.svs'.format(file_id))            
+            coords = pd.read_csv(PatchPath, index_col=0)
             coords = coords.astype({"coords_y": int, "coords_x": int})
             coords['file_id'] = file_id
-            coords['wsi_path'] = svs_folder + '/{}.svs'.format(file_id)
+            coords['wsi_path'] = WSIPath
 
             if (filenb == 0):
                 coords_file = coords
             else:
                 coords_file = coords_file.append(coords)
         except:
-            print('Unable to find patch data for file {}.'.format(file_id))
+            print('Unable to find patch data for file {}.'.format(file_id)+ '.csv')
             continue
 
     return coords_file
