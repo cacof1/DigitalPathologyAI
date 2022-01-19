@@ -56,7 +56,6 @@ class DataGenerator(torch.utils.data.Dataset):
         ## Transform - Data Augmentation
 
         if self.transform: data_dict = {key: self.transform(value) for (key, value) in data_dict.items()}
-
         if (self.inference): return data_dict
 
         else:  
@@ -97,7 +96,7 @@ def LoadFileParameter(ids, svs_folder, patch_folder):
             PatchPath = Path(patch_folder, '{}.csv'.format(file_id))
             WSIPath = Path(svs_folder, '{}.svs'.format(file_id))
 
-            coords = pd.read_csv(PatchPath, index_col=0)
+            coords = pd.read_csv(PatchPath, header=0)
             coords = coords.astype({"coords_y": int, "coords_x": int})
             coords['file_id'] = file_id
             coords['wsi_path'] = str(WSIPath)

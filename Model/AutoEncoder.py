@@ -42,8 +42,7 @@ class AutoEncoder(LightningModule):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
         return self.model(x)
             
-    def training_step(self, batch, batch_idx):
-        
+    def training_step(self, batch, batch_idx):        
         image,label = batch
         image       = next(iter(image.values())) ## Take the first value in the dictonnary for single zoom
         prediction  = self.forward(image)
@@ -83,6 +82,12 @@ class Encoder(LightningModule):
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
         return self.encoder(x)
+
+    def predict_step(self, batch, batch_idx):
+        image       = batch
+        image       = next(iter(image.values()))
+        prediction  = self.forward(image)
+        return prediction
 
 class Decoder(LightningModule):
     def __init__(self,output_shape=(1,1024,4,4,), config=None) -> None: 

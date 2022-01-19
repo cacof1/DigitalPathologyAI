@@ -37,7 +37,7 @@ from torch.optim import Adam
 from torch.nn import functional as F
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
-
+import toml
 from pathlib import Path
 
  ## Module - Dataloaders
@@ -52,7 +52,7 @@ config   = toml.load(sys.argv[1])
 ##First create a master loader
 MasterSheet    = config['DATA']['Mastersheet']
 SVS_Folder     = config['DATA']['SVS_Folder']
-Patches_Folder = config['DATA']['Patches_Folder']
+Patch_Folder = config['DATA']['Patches_Folder']
 Pretrained_Model = sys.argv[2]
 
 seed_everything(config['MODEL']['RANDOM_SEED'])
@@ -68,12 +68,12 @@ invTrans   = transforms.Compose([
     ])
 
 ## Load the previous  model
-trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
-trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model, config).encoder
+trainer = pl.Trainer(gpus=1, max_epochs=config['MODEL']['Max_Epochs'],precision=config['MODEL']['Precision'])
+trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model, config=config)
 
 ## Now predict
+test_dataset = DataLoader(DataGenerator(coords_file, transform= transform, inference = config['MODEL']['inference']), batch_size=config['MODEL']['Batch_Size'], num_workers=0, shuffle=False)
 
-test_dataset = DataLoader(DataGenerator(coords_file, transform = transform, inference,dim=(128,128), vis_level=0), batch_size=10, num_workers=0, shuffle=False)
 
 features_out    = trainer.predict(trainer.model,test_dataset)
 features_out    = np.concatenate(features_out, axis=0)
@@ -81,7 +81,6 @@ features_out    = features_out.reshape(features_out.shape[0],-1)
 
 
 #kmeans = MiniBatchKMeans(n_clusters=4,batch_size=32).fit(features_out)
-
 n_clusters = 4
 kmeans  = KMeans(n_clusters=n_clusters,n_jobs=10,verbose=1).fit(features_out)
 #df = pd.DataFrame()
