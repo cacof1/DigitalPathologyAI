@@ -19,8 +19,8 @@ from wsi_core.WholeSlideImage import WholeSlideImage
 
 class DataGenerator(torch.utils.data.Dataset):
 
-    def __init__(self, coords_file, target="tumour_label", dim_list=[(256, 256)], vis_list=[0], inference=False, transform=None,
-                 target_transform=None):
+    def __init__(self, coords_file, target="tumour_label", dim_list=[(256, 256)], vis_list=[0],
+                 inference=False, transform=None, target_transform=None):
 
         super().__init__()
         self.transform = transform
@@ -75,15 +75,16 @@ class DataModule(LightningDataModule):
         coords_file = coords_file.groupby("file_id").sample(n=n_per_sample, replace=False)
         svi = np.unique(coords_file.file_id)
         np.random.shuffle(svi)
-        train_idx, val_idx = train_test_split(svi, test_size = val_size, train_size = train_size) #, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
+        train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size) #, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
         self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], transform=train_transform, **kwargs)
         self.val_data   = DataGenerator(coords_file[coords_file.file_id.isin(val_idx)],   transform=val_transform, **kwargs)
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
-    def val_dataloader(self):   return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
+    def val_dataloader(self):   return DataLoader(self.val_data,   batch_size=self.batch_size, num_workers=10, pin_memory=True)
 
-def WSIQuery(mastersheet, config, **kwargs):  ## Select based on queries
-    dataframe = pd.read_csv(mastersheet)
+def WSIQuery(config, **kwargs):  ## Select based on queries
+
+    dataframe = pd.read_csv(config['DATA']['Mastersheet'])
     for key, item in config['CRITERIA'].items():
         dataframe = dataframe[dataframe[key].isin(item)]
     ids = dataframe['id']
@@ -93,6 +94,7 @@ def WSIQuery(mastersheet, config, **kwargs):  ## Select based on queries
 def LoadFileParameter(ids, svs_folder, patch_folder):
     coords_file = pd.DataFrame()
     for filenb, file_id in enumerate(ids):
+        file_id = str(file_id)  # force string if the user input integers instead
 
         try:
             PatchPath = Path(patch_folder, '{}.csv'.format(file_id))
