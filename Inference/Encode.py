@@ -50,16 +50,14 @@ from Model.AutoEncoder import AutoEncoder
 config   = toml.load(sys.argv[1])
 
 ##First create a master loader
-
 MasterSheet    = config['DATA']['Mastersheet']
 SVS_Folder     = config['DATA']['SVS_Folder']
 Patches_Folder = config['DATA']['Patches_Folder']
 Pretrained_Model = sys.argv[2]
 
 seed_everything(config['MODEL']['RANDOM_SEED'])
-ids              = WSIQuery(MasterSheet)
+ids              = WSIQuery(config)
 coords_file      = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
-coords_file      = coords_file[coords_file["tumour_label"] == 1][:10000].reset_index()
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -75,7 +73,7 @@ trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model, config).encod
 
 ## Now predict
 
-test_dataset = DataLoader(DataGenerator(coords_file, transform = transform, inference = True,dim=(128,128), vis_level=0), batch_size=10, num_workers=0, shuffle=False)
+test_dataset = DataLoader(DataGenerator(coords_file, transform = transform, inference,dim=(128,128), vis_level=0), batch_size=10, num_workers=0, shuffle=False)
 
 features_out    = trainer.predict(trainer.model,test_dataset)
 features_out    = np.concatenate(features_out, axis=0)
