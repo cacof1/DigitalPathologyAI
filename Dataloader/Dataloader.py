@@ -58,7 +58,7 @@ class DataGenerator(torch.utils.data.Dataset):
         if self.transform: data_dict = {key: self.transform(value) for (key, value) in data_dict.items()}
         if (self.inference): return data_dict
 
-        else:  
+        else: 
             label = int(round(self.coords[self.target].iloc[id]))
             if self.target_transform:
                 label = self.target_transform(label)
@@ -71,6 +71,7 @@ class DataModule(LightningDataModule):
                  train_size=0.7, val_size=0.3, **kwargs):
         super().__init__()
         self.batch_size = batch_size
+        print(coords_file)
         coords_file = coords_file.groupby("file_id").sample(n=n_per_sample, replace=False)
         svi = np.unique(coords_file.file_id)
         np.random.shuffle(svi)

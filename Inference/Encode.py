@@ -82,11 +82,11 @@ features_out    = features_out.reshape(features_out.shape[0],-1)
 
 #kmeans = MiniBatchKMeans(n_clusters=4,batch_size=32).fit(features_out)
 n_clusters = 4
-kmeans  = KMeans(n_clusters=n_clusters,n_jobs=10,verbose=1).fit(features_out)
+kmeans  = KMeans(n_clusters=n_clusters,verbose=1,n_init= 1).fit(features_out)
 #df = pd.DataFrame()
-coords_file["labels"] = kmeans.labels_
-coords_file["labels"] = 255*coords_file["labels"]/n_clusters
-
+coords_file["clusters"] = kmeans.labels_
+coords_file["clusters"] = 255*coords_file["clusters"]/n_clusters
+print(coords_file)
 
 ## Testing
 """
@@ -138,7 +138,7 @@ coords_file['embedding-one'] = embedding[:,0]
 coords_file['embedding-two'] = embedding[:,1]
 sns.scatterplot(
     x="embedding-one", y="embedding-two",
-    hue="labels",
+    hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
     data=coords_file,
     legend="full",
@@ -148,9 +148,9 @@ plt.show()
 print(coords_file)
 
 coords = np.array(coords_file[["coords_x","coords_y"]])
-print(coords, coords_file["labels"])
+print(coords, coords_file["clusters"])
 wsi_file = WholeSlideImage(coords_file["wsi_path"].iloc[0])
-img = wsi_file.visHeatmap(coords_file["labels"],coords,patch_size=(128, 128),segment=False, cmap='jet')
+img = wsi_file.visHeatmap(coords_file["clusters"],coords,patch_size=(128, 128),segment=False, cmap='jet')
 plt.imshow(img)
 plt.colorbar()
 plt.show()
@@ -164,7 +164,7 @@ coords_file['pca-two'] = pca_results[:,1]
 plt.figure(figsize=(16,10))
 sns.scatterplot(
     x="pca-one", y="pca-two",
-    hue="labels",
+    hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
     data=coords_file,
     legend="full",
@@ -184,7 +184,7 @@ coords_file['tsne-2d-two'] = tsne_results[:,1]
 plt.figure(figsize=(16,10))
 sns.scatterplot(
     x="tsne-2d-one", y="tsne-2d-two",
-    hue="labels",
+    hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
     data=coords_file,
     legend="full",
