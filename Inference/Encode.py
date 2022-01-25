@@ -37,7 +37,7 @@ from torch.optim import Adam
 from torch.nn import functional as F
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
-
+import toml
 from pathlib import Path
 
  ## Module - Dataloaders
@@ -50,16 +50,14 @@ from Model.AutoEncoder import AutoEncoder
 config   = toml.load(sys.argv[1])
 
 ##First create a master loader
-
 MasterSheet    = config['DATA']['Mastersheet']
 SVS_Folder     = config['DATA']['SVS_Folder']
-Patches_Folder = config['DATA']['Patches_Folder']
+Patch_Folder = config['DATA']['Patches_Folder']
 Pretrained_Model = sys.argv[2]
 
 seed_everything(config['MODEL']['RANDOM_SEED'])
-ids              = WSIQuery(MasterSheet)
+ids              = WSIQuery(config)
 coords_file      = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
-coords_file      = coords_file[coords_file["tumour_label"] == 1][:10000].reset_index()
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -70,12 +68,12 @@ invTrans   = transforms.Compose([
     ])
 
 ## Load the previous  model
-trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
-trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model, config).encoder
+trainer = pl.Trainer(gpus=1, max_epochs=config['MODEL']['Max_Epochs'],precision=config['MODEL']['Precision'])
+trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model, config=config)
 
 ## Now predict
+test_dataset = DataLoader(DataGenerator(coords_file, transform= transform, inference = config['MODEL']['inference']), batch_size=config['MODEL']['Batch_Size'], num_workers=0, shuffle=False)
 
-test_dataset = DataLoader(DataGenerator(coords_file, transform = transform, inference = True,dim=(128,128), vis_level=0), batch_size=10, num_workers=0, shuffle=False)
 
 features_out    = trainer.predict(trainer.model,test_dataset)
 features_out    = np.concatenate(features_out, axis=0)
@@ -83,13 +81,12 @@ features_out    = features_out.reshape(features_out.shape[0],-1)
 
 
 #kmeans = MiniBatchKMeans(n_clusters=4,batch_size=32).fit(features_out)
-
 n_clusters = 4
-kmeans  = KMeans(n_clusters=n_clusters,n_jobs=10,verbose=1).fit(features_out)
+kmeans  = KMeans(n_clusters=n_clusters,verbose=1,n_init= 1).fit(features_out)
 #df = pd.DataFrame()
-coords_file["labels"] = kmeans.labels_
-coords_file["labels"] = 255*coords_file["labels"]/n_clusters
-
+coords_file["clusters"] = kmeans.labels_
+coords_file["clusters"] = 255*coords_file["clusters"]/n_clusters
+print(coords_file)
 
 ## Testing
 """
@@ -141,7 +138,7 @@ coords_file['embedding-one'] = embedding[:,0]
 coords_file['embedding-two'] = embedding[:,1]
 sns.scatterplot(
     x="embedding-one", y="embedding-two",
-    hue="labels",
+    hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
     data=coords_file,
     legend="full",
@@ -151,9 +148,9 @@ plt.show()
 print(coords_file)
 
 coords = np.array(coords_file[["coords_x","coords_y"]])
-print(coords, coords_file["labels"])
+print(coords, coords_file["clusters"])
 wsi_file = WholeSlideImage(coords_file["wsi_path"].iloc[0])
-img = wsi_file.visHeatmap(coords_file["labels"],coords,patch_size=(128, 128),segment=False, cmap='jet')
+img = wsi_file.visHeatmap(coords_file["clusters"],coords,patch_size=(128, 128),segment=False, cmap='jet')
 plt.imshow(img)
 plt.colorbar()
 plt.show()
@@ -167,7 +164,7 @@ coords_file['pca-two'] = pca_results[:,1]
 plt.figure(figsize=(16,10))
 sns.scatterplot(
     x="pca-one", y="pca-two",
-    hue="labels",
+    hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
     data=coords_file,
     legend="full",
@@ -187,7 +184,7 @@ coords_file['tsne-2d-two'] = tsne_results[:,1]
 plt.figure(figsize=(16,10))
 sns.scatterplot(
     x="tsne-2d-one", y="tsne-2d-two",
-    hue="labels",
+    hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
     data=coords_file,
     legend="full",

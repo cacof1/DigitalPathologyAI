@@ -56,10 +56,9 @@ class DataGenerator(torch.utils.data.Dataset):
         ## Transform - Data Augmentation
 
         if self.transform: data_dict = {key: self.transform(value) for (key, value) in data_dict.items()}
-
         if (self.inference): return data_dict
 
-        else:  
+        else: 
             label = int(round(self.coords[self.target].iloc[id]))
             if self.target_transform:
                 label = self.target_transform(label)
@@ -87,26 +86,27 @@ def WSIQuery(config, **kwargs):  ## Select based on queries
     dataframe = pd.read_csv(config['DATA']['Mastersheet'])
     for key, item in config['CRITERIA'].items():
         dataframe = dataframe[dataframe[key].isin(item)]
-    ids = dataframe['id'].astype('int')
-    return sorted(ids)
+    ids = dataframe['id']
+    return ids
 
 def LoadFileParameter(ids, svs_folder, patch_folder):
     coords_file = pd.DataFrame()
     for filenb, file_id in enumerate(ids):
-        file_id = str(file_id)  # force string if the user input integers instead
+        try:
+            PatchPath = Path(patch_folder, '{}.csv'.format(file_id))
+            WSIPath = Path(svs_folder, '{}.svs'.format(file_id))
 
-        try:  ## TODO: be robust to non-.csv extension.
-            coords = pd.read_csv(patch_folder + '/{}.csv'.format(file_id), index_col=0)
+            coords = pd.read_csv(PatchPath, header=0)
             coords = coords.astype({"coords_y": int, "coords_x": int})
             coords['file_id'] = file_id
-            coords['wsi_path'] = svs_folder + '/{}.svs'.format(file_id)
+            coords['wsi_path'] = str(WSIPath)
 
-            if (filenb == 0):
+            if filenb == 0:
                 coords_file = coords
             else:
                 coords_file = coords_file.append(coords)
         except:
-            print('Unable to find patch data for file {}.'.format(file_id))
+            print('Unable to find patch data for file {}.csv'.format(file_id))
             continue
 
     return coords_file

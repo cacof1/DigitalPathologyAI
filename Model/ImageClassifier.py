@@ -2,7 +2,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 from torchmetrics.functional import accuracy
-from torchvision import datasets, models, transforms
+from torchvision import models
 from torch.nn.functional import softmax
 
 class ImageClassifier(pl.LightningModule):

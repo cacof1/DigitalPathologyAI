@@ -82,28 +82,7 @@ else:  # infer
     model.eval()
     predictions = trainer.predict(model, data)
     predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))
+
     for i in range(predicted_classes_prob.shape[1]):
         SaveFileParameter(coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
-                          'sarcoma_pred_label_' + str(i))  ## TODO: fix to be more general.
-    preds = torch.argmax(predicted_classes_prob, dim=1)
-    targets = torch.tensor(data.dataset.coords.sarcoma_label.values.astype(int))
-    final_acc = accuracy(preds, targets)
-    print('Final accuracy over entire dataset is: {}'.format(final_acc))
-    CF = confusion_matrix(preds, targets, config['DATA']['n_classes'])
-    print('Confusion matrix:')
-    print(CF)
-    print('------------------')
-
-    # Statistics per SVS.
-    file_ids = data.dataset.coords.file_id.unique()
-    acc_per_SVS = list()
-    for file_id in file_ids:
-        mask = data.dataset.coords.file_id == file_id
-        #print(sum(mask))
-        cur_targets = torch.tensor(data.dataset.coords.sarcoma_label.values[mask].astype(int))
-        cur_preds = preds[mask.values]
-        the_acc = accuracy(cur_preds, cur_targets)
-        #the_acc = torch.mode(cur_preds).values == torch.mode(cur_targets).values  # if voting per mode instead
-        acc_per_SVS.append(the_acc)
-        the_cur_label = np.unique(data.dataset.coords.sarcoma_label[mask])
-        print('{}, {}, {}'.format(file_id, the_cur_label[0], 100*the_acc.numpy()))
+                          'prob_' + config['DATA']['target'] + str(i))

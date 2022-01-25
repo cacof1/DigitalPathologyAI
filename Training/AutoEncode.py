@@ -56,7 +56,7 @@ MasterSheet    = config['DATA']['Mastersheet']
 SVS_Folder     = config['DATA']['SVS_Folder']
 Patches_Folder = config['DATA']['Patches_Folder']
 
-ids           = WSIQuery(MasterSheet, config)
+ids           = WSIQuery(config)
 coords_file   = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
 #coords_file   = coords_file[coords_file["tumour_label"] == 1]
 
@@ -80,7 +80,7 @@ data      = DataModule(
 )
 trainer.fit(model, data)
 
-
+"""
 ## Testing
 test_dataset = DataLoader(DataGenerator(coords_file[:1000], transform = train_transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
 image_out    = trainer.predict(trainer.model,test_dataset)
@@ -105,3 +105,4 @@ for j in range(n):
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
     plt.show()
+"""
