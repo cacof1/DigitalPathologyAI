@@ -405,7 +405,7 @@ class WholeSlideImage(object):
         if convert_to_percentiles:
             scores = to_percentiles(scores) 
 
-        scores /= 100
+        #scores /= 100
         
         ######## calculate the heatmap of raw attention scores (before colormap) 
         # by accumulating scores over overlapped regions ######
@@ -479,7 +479,9 @@ class WholeSlideImage(object):
                 img_block = img[coord[1]:coord[1]+patch_size[1], coord[0]:coord[0]+patch_size[0]].copy()
 
                 # color block (cmap applied to attention block)
-                color_block = (cmap(raw_block) * 255)[:,:,:3].astype(np.uint8)
+                #color_block = (cmap(raw_block) * 255)[:,:,:3].astype(np.uint8)  # this is not useful with discretised classes
+                rb = raw_block.astype(int)
+                color_block = (cmap(rb) * 255)[:,:,:3].astype(np.uint8)
 
                 if segment:
                     # tissue mask block

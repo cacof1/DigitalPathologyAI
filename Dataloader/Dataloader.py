@@ -95,7 +95,7 @@ def LoadFileParameter(ids, svs_folder, patch_folder):
     for filenb, file_id in enumerate(ids):
         file_id = str(file_id)  # force string if the user input integers instead
 
-        try:
+        try:  ## TODO: be robust to non-.csv extension.
             coords = pd.read_csv(patch_folder + '/{}.csv'.format(file_id), index_col=0)
             coords = coords.astype({"coords_y": int, "coords_x": int})
             coords['file_id'] = file_id
