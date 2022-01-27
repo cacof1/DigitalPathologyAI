@@ -32,7 +32,7 @@ class AutoEncoder(LightningModule):
         super().__init__()
         self.config = config    
         self.encoder = Encoder(backbone = self.config["MODEL"]["Backbone"], config = self.config)
-        output_shape = self.encoder(torch.rand((1, self.config["DATA"]["n_classes"], self.config["DATA"]["dim"][0][0], self.config["DATA"]["dim"][0][1] ))).size()
+        output_shape = self.encoder(torch.rand((1, self.config["DATA"]["n_channel"], self.config["DATA"]["dim"][0][0], self.config["DATA"]["dim"][0][1] ))).size()
         self.decoder = Decoder(output_shape = output_shape, config = config)
         self.model = nn.Sequential(
             self.encoder,
@@ -73,9 +73,9 @@ class Encoder(LightningModule):
     def __init__(self,backbone=models.densenet121(), config = None) -> None:
         super().__init__()
         if(backbone=="ResNet"):
-            self.encoder  = ResNetEncoder(in_channels=config['DATA']['n_classes'], depth=config['MODEL']['depth'], wf =config['MODEL']['wf'])
+            self.encoder  = ResNetEncoder(in_channels=config['DATA']['n_channel'], depth=config['MODEL']['depth'], wf =config['MODEL']['wf'])
         elif(backbone=="UNet"):
-            self.encoder = UNetEncoder(in_channels=config['DATA']['n_classes'], depth=config['MODEL']['depth'], wf =config['MODEL']['wf'])
+            self.encoder = UNetEncoder(in_channels=config['DATA']['n_channel'], depth=config['MODEL']['depth'], wf =config['MODEL']['wf'])
         else:
             self.encoder = nn.Sequential(*list(getattr(models, config["MODEL"]["Backbone"])().children())[:-1])
 
@@ -93,7 +93,7 @@ class Decoder(LightningModule):
     def __init__(self,output_shape=(1,1024,4,4,), config=None) -> None: 
         super().__init__()
         if(config['MODEL']['Backbone']=='ResNet'):
-            self.decoder = ResNetDecoder(in_channels = output_shape[1], n_classes =config['DATA']['n_classes'], depth =config['MODEL']['depth'], wf = config['MODEL']['wf'])
+            self.decoder = ResNetDecoder(in_channels = output_shape[1], n_classes =config['DATA']['n_channel'], depth =config['MODEL']['depth'], wf = config['MODEL']['wf'])
         else:
             depth        = int(math.log(128,2) - math.log(output_shape[-1],2))
             in_channels  = output_shape[1]
@@ -104,7 +104,7 @@ class Decoder(LightningModule):
                 self.decoder.append(UNetUpBlock(in_channels, out_channels))
                 in_channels  = out_channels
 
-            self.decoder.append(nn.Conv2d(out_channels, config['DATA']['n_classes'] , kernel_size=1,stride=1))
+            self.decoder.append(nn.Conv2d(out_channels, config['DATA']['n_channel'] , kernel_size=1,stride=1))
             self.decoder = nn.Sequential(*self.decoder)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
