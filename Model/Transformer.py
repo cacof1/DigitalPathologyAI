@@ -1,73 +1,57 @@
 import torch
-import torch.nn.functional as F
 from torchmetrics.functional import accuracy
 import pytorch_lightning as pl
 from torch import nn
 from torch import Tensor
 from torch.nn.functional import softmax
-from PIL import Image
-from torchvision.transforms import Compose, Resize, ToTensor
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange, Reduce
-class PatchEmbedding(nn.Module): ## split the images in sub-patches and preprend cls and position
+# Model loosely based on: https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632,
+# and https://amaarora.github.io/2021/01/18/ViT.html
+
+
+class PatchEmbedding(nn.Module):
     def __init__(self, in_channels: int = 3, patch_size: int = 16, emb_size: int = 768, img_size: int = 224):
         self.patch_size = patch_size
         super().__init__()
+
+        # Reduce each of b images of size (c,h,w) into n = hw/(p^2) smaller patches of size (c,p,p).
+        # Re-express each small patch as a vector with emb_size (e) elements: (c,p,p)->e.
+        # This results in the mapping from (b,c,h,w) -> (b,n,e).
+
         self.projection = nn.Sequential(
-            # using a conv layer instead of a linear one -> performance gains
-            nn.Conv2d(in_channels, emb_size, kernel_size=patch_size, stride=patch_size), ## 16^2*3 -- Learnable
-            Rearrange('b e (h) (w) -> b (h w) e'), ## e -> embedding, h-># in height, w-> # in width, b-> batch, h*w -> n (total number of sub-patches)
+            nn.Conv2d(in_channels, emb_size, kernel_size=patch_size, stride=patch_size),
+            Rearrange('b e (h) (w) -> b (h w) e'),
         )
-        self.cls_token = nn.Parameter(torch.randn(1,1, emb_size))
-        self.positions = nn.Parameter(torch.randn((img_size // patch_size) **2 + 1, emb_size))
-        
+
+        self.cls_token = nn.Parameter(torch.randn(1, 1, emb_size))  # cls token of size (1,1,e)
+        self.positions = nn.Parameter(torch.randn((img_size//patch_size)**2 + 1, emb_size))  # pos embed, size (n+1, e)
+
     def forward(self, x: Tensor) -> Tensor:
-        b, _, _, _ = x.shape
         x = self.projection(x)
-        cls_tokens = repeat(self.cls_token, '() n e -> b n e', b=b)
-        # prepend the cls token to the input
-        x = torch.cat([cls_tokens, x], dim=1)
-        # add position embedding
-        x += self.positions
-        return x
+        cls_tokens = repeat(self.cls_token, '() n e -> b n e', b=x.shape[0])  # replicate cls token to size (b,1,e)
+        x = torch.cat([cls_tokens, x], dim=1)  # prepend cls token to input
+        x += self.positions  # add pos embed (will broadcast on b dimension)
+        return x  # size (b, n+1, e)
 
-class MultiHeadAttention(nn.Module):
-    def __init__(self, emb_size: int = 512, num_heads: int = 8, dropout: float = 0):
+
+class MHA(nn.Module):
+    def __init__(self, emb_size: int = 512, num_heads: int = 8, drop: float = 0):
         super().__init__()
-        self.emb_size = emb_size
-        self.num_heads = num_heads
-        self.keys = nn.Linear(emb_size, emb_size) ## Learnable
-        self.queries = nn.Linear(emb_size, emb_size) ## Learnable
-        self.values = nn.Linear(emb_size, emb_size) ## Learnable
-        self.att_drop = nn.Dropout(dropout)
-        self.projection = nn.Linear(emb_size, emb_size)
-        
-    def forward(self, x : Tensor, mask: Tensor = None) -> Tensor:
-        # split keys, queries and values in num_heads
-        queries = rearrange(self.queries(x), "b n (h d) -> b h n d", h=self.num_heads)  ## b is batch, n is total number of sub-patches, (hd) == e is embedding size which is split as into h (=num_heads) sub-embedding of size d
-        keys    = rearrange(self.keys(x), "b n (h d) -> b h n d",    h=self.num_heads)
-        values  = rearrange(self.values(x), "b n (h d) -> b h n d",  h=self.num_heads)
+        self.keys = nn.Linear(emb_size, emb_size)
+        self.queries = nn.Linear(emb_size, emb_size)
+        self.values = nn.Linear(emb_size, emb_size)
+        self.MHA = nn.MultiheadAttention(emb_size, num_heads, dropout=drop, bias=False, batch_first=True)
 
-        # sum up over the last axis -- tensor multiplication over the sub-embedding 
-        energy = torch.einsum('bhqd, bhkd -> bhqk', queries, keys) # Size of batch, num_heads, n_subpatches, n_subpatches
-        if mask is not None:
-            fill_value = torch.finfo(torch.float32).min
-            energy.mask_fill(~mask, fill_value)
-            
-        scaling = self.emb_size ** (1/2) 
-        att = F.softmax(energy, dim=-1) / scaling ## Attention scaling, dunno why
-        att = self.att_drop(att)
-
-        # ATT: batch, num_heads, n_subpatches, n_subpatches
-        # VALUES: is batch, num_heads, n_subpatches, emb_size/num_heads,
-        # OUT: batch, num_head, n_subpatches, emb_size/num_head -- matrix multiplication of the last two elements (al, lv -> av)
-        out = torch.einsum('bhal, bhlv -> bhav ', att, values)
-        
-        out = rearrange(out, "b h n d -> b n (h d)") ## reverse the subsplitting --> batches, num_subpatches, emb_size
-        att = reduce(att, "b h n c -> b n c", reduction="sum") ## add the attention from every sub embedding (batch, n_subpatches, n_subpatches)
-        out = self.projection(out)
+    def forward(self, x: Tensor, mask: Tensor = None) -> Tensor:
+        # Input arrays are of size (b, n+1, e), compatible with nn.MultiHeadAttention (with batch_first=True)
+        queries = self.queries(x)
+        keys = self.keys(x)
+        values = self.values(x)
+        out, attention = self.MHA(queries, keys, values)  # TODO: export attention
         return out
-    
+
+
 class ResidualAdd(nn.Module):
     def __init__(self, fn):
         super().__init__()
@@ -78,32 +62,26 @@ class ResidualAdd(nn.Module):
 
 
 class TransformerEncoderBlock(nn.Sequential):
-    def __init__(self,
-                 emb_size: int = 768,
-                 drop_p: float = 0.,
-                 forward_expansion: int = 4,
-                 forward_drop_p: float = 0.,
-                 ** kwargs):
+    def __init__(self, emb_size: int = 768, drop: float = 0., forward_expansion: int = 4, ** kwargs):
         super().__init__(
             ResidualAdd(nn.Sequential(
-                nn.LayerNorm(emb_size),
-                MultiHeadAttention(emb_size, **kwargs),
-                nn.Dropout(drop_p)
-            )),
+                        nn.LayerNorm(emb_size),
+                        MHA(emb_size, drop=drop, **kwargs),
+                        )),
             ResidualAdd(nn.Sequential(
-                nn.LayerNorm(emb_size),
-                FeedForwardBlock(emb_size, expansion=forward_expansion, drop_p=forward_drop_p),
-                nn.Dropout(drop_p)
-            )
-            ))
+                        nn.LayerNorm(emb_size),
+                        MLP(emb_size, expansion=forward_expansion, drop=drop),
+                        ))
+        )
 
-class FeedForwardBlock(nn.Sequential):
-    def __init__(self, emb_size: int, expansion: int = 4, drop_p: float = 0.):
+class MLP(nn.Sequential):
+    def __init__(self, emb_size: int, expansion: int = 4, drop: float = 0.):
         super().__init__(
             nn.Linear(emb_size, expansion * emb_size),
+            nn.Dropout(drop),
             nn.GELU(),
-            nn.Dropout(drop_p),
             nn.Linear(expansion * emb_size, emb_size),
+            nn.Dropout(drop),
         )
         
 class TransformerEncoder(nn.Sequential):
@@ -113,7 +91,7 @@ class TransformerEncoder(nn.Sequential):
 class ClassificationHead(nn.Sequential):
     def __init__(self, emb_size: int = 768, n_classes: int = 1000):
         super().__init__(
-            Reduce('b n e -> b e', reduction='mean'), ## b is batch, n is number of sub-patches, e is embedding. Average over all sub-patches
+            #Reduce('b n e -> b e', reduction='mean'), ## b is batch, n is number of sub-patches, e is embedding. Average over all sub-patches
             nn.LayerNorm(emb_size), 
             nn.Linear(emb_size, n_classes))
 
@@ -121,15 +99,22 @@ class ViT(pl.LightningModule):
     def __init__(self, config, **kwargs):
         super().__init__()
         self.config = config
-        self.model = nn.Sequential(
-            PatchEmbedding(config["DATA"]["n_channel"], config["DATA"]["sub_patch_size"], config["MODEL"]["emb_size"], config["DATA"]["dim"][0][0]),
-            TransformerEncoder(config["MODEL"]["depth"], emb_size=config["MODEL"]["emb_size"], **kwargs),
-            ClassificationHead(config["MODEL"]["emb_size"], config["DATA"]["n_classes"])
+        self.forward_features = nn.Sequential(
+            PatchEmbedding(config["DATA"]["n_channel"], config["DATA"]["sub_patch_size"],
+                           config["MODEL"]["emb_size"], config["DATA"]["dim"][0][0]),
+            TransformerEncoder(config["MODEL"]["depth"], emb_size=config["MODEL"]["emb_size"],
+                               num_heads=config['MODEL']['n_heads_vit'], drop=config['MODEL']['Drop_Rate'],
+                               **kwargs),
         )
 
+        self.classification_head = ClassificationHead(config["MODEL"]["emb_size"], config["DATA"]["n_classes"])
+
         self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["loss_function"])()
+
     def forward(self, x):
-        return self.model(x)
+        x = self.forward_features(x)
+        x = self.classification_head(torch.squeeze(x[:, 0, :]))  # classify only using learned cls token
+        return x
 
     def training_step(self, train_batch, batch_idx):
         image, labels = train_batch
@@ -146,7 +131,6 @@ class ViT(pl.LightningModule):
         image, labels = val_batch
         image         = next(iter(image.values())) ## Take the first value in the dictonnary for single zoom
         logits        = self.forward(image)
-        print(logits.dtype, labels.dtype)
         loss          = self.loss_fcn(logits, labels)
         preds         = torch.argmax(softmax(logits, dim=1), dim=1)
         acc           = accuracy(preds, labels)
@@ -172,7 +156,8 @@ class ViT(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.config["OPTIMIZER"]["lr"],
-                                     eps=self.config["OPTIMIZER"]["eps"])
+                                     eps=self.config["OPTIMIZER"]["eps"],
+                                     weight_decay=self.config['OPTIMIZER']['weight_decay'])
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.config["OPTIMIZER"]["step_size"],
-                                                gamma=self.config["OPTIMIZER"]["gamma"])  
+                                                    gamma=self.config["OPTIMIZER"]["gamma"])
         return ([optimizer], [scheduler])

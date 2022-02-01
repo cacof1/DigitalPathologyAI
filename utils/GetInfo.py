@@ -40,9 +40,16 @@ def format_model_name(config):
     # This format has been validated (and designed specifically) for the sarcoma classification problem.
     # It may work with other models, or require adaptation.
 
+    # transformer params
+    if config['MODEL']['BaseModel'] == 'Transformer':
+        vit_info = '_emb' + str(config['MODEL']['emb_size']) + '_nheads' + str(config['MODEL']['n_heads_vit']) + '_depth' + str(config['MODEL']['depth'])
+    else:
+        vit_info = ''
+
+
     model_name = config['MODEL']['Backbone'] + '_pre' if config['MODEL']['Pretrained'] is True else config['MODEL'][
-        'Backbone']
-    model_name = model_name + '_drop' + str(config['MODEL']['Drop_Rate']) if 'densenet' in model_name else model_name
+        'Backbone'] + vit_info
+    model_name = model_name + '_drop' + str(config['MODEL']['Drop_Rate'])
 
     dimstr = ''
     for dim in range(len(config['DATA']['dim'])):

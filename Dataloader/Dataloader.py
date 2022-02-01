@@ -73,10 +73,15 @@ class DataModule(LightningDataModule):
         self.batch_size = batch_size
         #coords_file = coords_file.groupby("file_id").sample(n=n_per_sample, replace=False)
         value_counts = coords_file.file_id.value_counts()
-        fn_for_sampling = value_counts[value_counts>n_per_sample].index
-        df1 = coords_file[coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(n=N, replace=False)
-        df2 =  coords_file[~coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(frac=1)
-        coords_file = pd.concat([df1,df2])
+        fn_for_sampling = value_counts[value_counts > n_per_sample].index
+        df1 = coords_file[coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(n=n_per_sample, replace=False)
+
+        if fn_for_sampling.shape != value_counts.shape:  # if some datasets have less than n_per_sample
+            df2 = coords_file[~coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(frac=1)
+            coords_file = pd.concat([df1, df2])
+        else:
+            coords_file = df1
+
         svi = np.unique(coords_file.file_id)
         np.random.shuffle(svi)
         train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size) #, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])

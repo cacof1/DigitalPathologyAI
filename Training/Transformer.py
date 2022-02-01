@@ -1,15 +1,17 @@
 from torchvision import transforms
 import torch
 import pytorch_lightning as pl
-from Dataloader.Dataloader import LoadFileParameter, DataModule, WSIQuery
+from Dataloader.Dataloader import LoadFileParameter, DataModule, WSIQuery, DataGenerator
 from Model.Transformer import ViT
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 import toml,sys
 from utils import GetInfo
+from torch.utils.data import DataLoader
 
 # Load configuration file and name
 config = toml.load(sys.argv[1])
+#config = toml.load('TransformerTrainerSarcoma.ini')
 name = GetInfo.format_model_name(config)
 
 # Set up all logging
@@ -33,17 +35,24 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])  
 
-data      = DataModule(
-    coords_file,
-    batch_size       =config['MODEL']['Batch_Size'],
-    train_transform  =transform,
-    val_transform    =transform,
-    inference        =False,
-    dim_list         =config['DATA']['dim'],
-    vis_list         =config['DATA']['vis'],
-    n_per_sample     =config['DATA']['n_per_sample'],
-    target           =config['DATA']['target']
-)
+if config['MODEL']['inference'] is False:  # train
+    data = DataModule(
+        coords_file,
+        batch_size=config['MODEL']['Batch_Size'],
+        train_transform=transform,
+        val_transform=transform,
+        inference=False,
+        dim_list=config['DATA']['dim'],
+        vis_list=config['DATA']['vis'],
+        n_per_sample=config['DATA']['n_per_sample'],
+        target=config['DATA']['target']
+    )
+else:  # prediction does not use train/validation sets, only directly the dataloader.
+    data = DataLoader(DataGenerator(coords_file, transform=transform, inference=True),
+                      batch_size=config['MODEL']['Batch_Size'],
+                      num_workers=10,
+                      shuffle=False,
+                      pin_memory=True)
 
 
 # Load model and classify
