@@ -1,5 +1,7 @@
 # Introduction to the config file
 
+Last updated: 08 Feb 2022.
+
 The configuration file must be defined by the user, and its path is the only argument to be passed for training. An example can be found under `./configs/example_config.ini`.
 
 The file is required to test the various classes, including <mark style="background: #FFA533!important">autoencoder</mark>,
