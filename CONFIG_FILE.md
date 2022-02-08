@@ -1,6 +1,4 @@
-# config file
-
-## Introduction
+# Introduction to the config file
 
 The configuration file must be defined by the user, and its path is the only argument to be passed for training. An example can be found under `./configs/example_config.ini`.
 
@@ -24,7 +22,7 @@ listed below, with a general description.
 | SCHEDULER | Selection of learning rate scheduler and adjustable parameters |
 | VERBOSE | Printed details in the Python console (see `utils.GetInfo`) |
 
-## Detailed parameters
+# Detailed parameters
 
 Each of the 9 subsections contain one or more parameters whose values must be
 set. Details on the parameters can be found in the comprehensive tables below.
@@ -34,7 +32,7 @@ be used for the parameter. If the **Valid** column is empty, the parameter is us
 for all architectures. Otherwise, the column returns the list of all architectures
 that use the parameter.
 
-### MODEL parameters
+## MODEL parameters
 
 | MODEL parameters      | Description | Options/restrictions     |     Valid     |
 | :---        |    :----   |          :--- | ---: |
@@ -56,10 +54,13 @@ that use the parameter.
 | Random_Seed   | For reproducibility, implemented with `pl.seed_everything`. See source code for which modules are seeded.        |       | |
 | wf   | Network parameter in the autoencoder.        |       | <mark style="background: #FFA533!important">autoencoder</mark> |
 
+## AUGMENTATION parameters
+
 | AUGMENTATION parameters      | Description | Options/restrictions     |     Valid         |
 | :---                         |    :---:    |          ---:            |      ---:         |
 | Rand_Operations              |    Integer setting the number of operations used in `transforms.RandAugment`.   |           | |
 
+## CHECKPOINT parameters
 
 At each epoch, the model is saved if the quantity followed in "Monitor" has reached a new "Mode" compared to previous epochs. The quantity defined in "Monitor" must be logged during training/validation/testing using the `pl.LightningModule.log()` method. For instance, to export the model when it reaches a new high in validation accuracy, set the Mode to "max" and Monitor to "val_acc_epoch".
 
@@ -67,6 +68,8 @@ At each epoch, the model is saved if the quantity followed in "Monitor" has reac
 | :---        |    :----:   |          ---: | ---: |
 | Mode        |  Value of the metric used as a decision criteria.      |           | |
 | Monitor        |   Metric to monitor    |           | |
+
+## CRITERIA parameters
 
 For details on how the CRITERIA parameters work, see `Dataloader.Dataloader.WSIQuery`. Each CRITERIA parameter corresponds to a column in the MasterSheet (defined above as a DATA parameter). Selection of WSIs for training/validation/testing is done on the subset of WSIs meeting the criteria. If the user does not want to use a specific CRITERIA parameter, it is preferable to comment its line in the config file. Each CRITERIA parameter should be encoded as a list of one or more strings.
 
@@ -76,6 +79,7 @@ For details on how the CRITERIA parameters work, see `Dataloader.Dataloader.WSIQ
 | id        |    List of acceptable WSI ids.   |           | |
 | Type        |    List of acceptable WSI types.   |           | |
 
+## DATA parameters
 
 | DATA parameters      | Description | Options/restrictions     |     Valid     |
 | :---        |    :----:   |          ---: | ---: |
@@ -91,11 +95,16 @@ For details on how the CRITERIA parameters work, see `Dataloader.Dataloader.WSIQ
 | Val_Size        |    Fraction of dataset to be used for validation. Splitting is done over WSIs, not individual tiles. Fraction of test dataset is 1 - Train_Size - Val_Size.   |           | |
 | Vis        |    Visibility level used. Can be a list of multiple visibility levels.   | Must be a list of one or more scalars, *e.g.* [0].          | |
 
+
+## OPTIMIZER parameters
+
 | OPTIMIZER parameters      | Description | Options/restrictions     |     Valid     |
 | :---        |    :----:   |          ---: | ---: |
 | Algorithm        |    Optimization algorithm.   |      Restricted to options in `torch.optim`.     | |
 | eps        |    Optimisation parameter in `Adam` and `AdamW`.   |           | |
 | lr        |    Learning rate.   |           | |
+
+## REGULARIZATION parameters
 
 | REGULARIZATION parameters      | Description | Options/restrictions     |     Valid     |
 | :---        |    :----:   |          ---: | ---: |
@@ -103,12 +112,16 @@ For details on how the CRITERIA parameters work, see `Dataloader.Dataloader.WSIQ
 | Stoch_Depth        |    Stochastic depth, as proposed by [[2]](https://link.springer.com/chapter/10.1007/978-3-319-46493-0_39)   |           | <mark style="background: #FF9696!important">ConvNeXt</mark> |
 | Weight_Decay        |    Weight decay, as a direct input to `torch.optim optimizers`.   |      | |
 
+## SCHEDULER parameters
+
 | SCHEDULER parameters      | Description | Options/restrictions     |     Valid     |
 | :---        |    :----   |          :--- | ---: |
 | Lin_Gamma        |    Input of `torch.optim.lr_scheduler.stepLR`   |           | If Type=='stepLR' |
 | Lin_Step_Size        |    Input of `torch.optim.lr_scheduler.stepLR`   |           | If Type=='stepLR' |
 | Type        |    Type of scheduler.   |  <li>'stepLR'</li> <li>'cosine_warmup'</li>         | |
 | Warmup_Epochs        |    Number of warmup epochs for cosine scheduler (`transformers.optimization.get_cosine_schedule_with_warmup`)   |           | If Type=='cosine_warmup' |
+
+## VERBOSE parameters
 
 | VERBOSE parameters      | Description | Options/restrictions     |     Valid     |
 | :---        |    :----:   |          ---: | ---: |
