@@ -34,10 +34,10 @@ be used for the parameter. If the **Valid** column is empty, the parameter is us
 for all architectures. Otherwise, the column returns the list of all architectures
 that use the parameter.
 
-### MODEL parametersh
+### MODEL parameters
 
 | MODEL parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----   |          :--- | |
+| :---        |    :----   |          :--- | ---: |
 | Activation   | Activation function for the classification head.       |  <li>"Identity", for cost functions that include the activation, such as CrossEntropyLoss.</li>       | |
 | Backbone   | Basic architecture for the <mark style="background: #96FF9C!important">ConvNet</mark> class.      | Restricted to options in `torchvision.models`.      | <mark style="background: #96FF9C!important">ConvNet</mark> |
 | Base_Model      | Class to use for training/inference. Will automatically set to lower case.        | <li><mark style="background: #FFA533!important">autoencoder</mark> </li><li> <mark style="background: #96D7FF!important">ViT</mark> </li><li> <mark style="background: #96FF9C!important">ConvNet</mark> </li><li> <mark style="background: #FF9696!important">ConvNeXt</mark>  | |
@@ -56,28 +56,29 @@ that use the parameter.
 | Random_Seed   | For reproducibility, implemented with `pl.seed_everything`. See source code for which modules are seeded.        |       | |
 | wf   | Network parameter in the autoencoder.        |       | <mark style="background: #FFA533!important">autoencoder</mark> |
 
-| AUGMENTATION parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----:   |          ---: | |
-| Rand_Operations        |    Integer setting the number of operations used in `transforms.RandAugment`.   |           | |
+| AUGMENTATION parameters      | Description | Options/restrictions     |     Valid         |
+| :---                         |    :---:    |          ---:            |      ---:         |
+| Rand_Operations              |    Integer setting the number of operations used in `transforms.RandAugment`.   |           | |
+
 
 At each epoch, the model is saved if the quantity followed in "Monitor" has reached a new "Mode" compared to previous epochs. The quantity defined in "Monitor" must be logged during training/validation/testing using the `pl.LightningModule.log()` method. For instance, to export the model when it reaches a new high in validation accuracy, set the Mode to "max" and Monitor to "val_acc_epoch".
 
 | CHECKPOINT parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----:   |          ---: | |
+| :---        |    :----:   |          ---: | ---: |
 | Mode        |  Value of the metric used as a decision criteria.      |           | |
 | Monitor        |   Metric to monitor    |           | |
 
 For details on how the CRITERIA parameters work, see `Dataloader.Dataloader.WSIQuery`. Each CRITERIA parameter corresponds to a column in the MasterSheet (defined above as a DATA parameter). Selection of WSIs for training/validation/testing is done on the subset of WSIs meeting the criteria. If the user does not want to use a specific CRITERIA parameter, it is preferable to comment its line in the config file. Each CRITERIA parameter should be encoded as a list of one or more strings.
 
 | CRITERIA parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----:   |          ---: | |
+| :---        |    :----:   |          ---: | ---: |
 | Diagnosis        |  List of acceptable diagnoses.     |           | |
 | id        |    List of acceptable WSI ids.   |           | |
 | Type        |    List of acceptable WSI types.   |           | |
 
 
 | DATA parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----:   |          ---: | |
+| :---        |    :----:   |          ---: | ---: |
 | Dim        |    Dimension of image patches (H, W).   |     Must be a list of one or more dimensions, *e.g.* [[256, 256]]      | |
 | MasterSheet        |    Path of the .csv sheet used to select WSI based on CRITERIA parameters. See `Dataloader.Dataloader.WSIQuery`.   |           | |
 | N_Classes        |    Number of classes in the classification head.    |           | |
@@ -91,24 +92,24 @@ For details on how the CRITERIA parameters work, see `Dataloader.Dataloader.WSIQ
 | Vis        |    Visibility level used. Can be a list of multiple visibility levels.   | Must be a list of one or more scalars, *e.g.* [0].          | |
 
 | OPTIMIZER parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----:   |          ---: | |
+| :---        |    :----:   |          ---: | ---: |
 | Algorithm        |    Optimization algorithm.   |      Restricted to options in `torch.optim`.     | |
 | eps        |    Optimisation parameter in `Adam` and `AdamW`.   |           | |
 | lr        |    Learning rate.   |           | |
 
 | REGULARIZATION parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----:   |          ---: | |
+| :---        |    :----:   |          ---: | ---: |
 | Label_Smoothing        |    Label smoothing value for `torch.nn.CrossEntropyLoss`.   |           | |
 | Stoch_Depth        |    Stochastic depth, as proposed by [[2]](https://link.springer.com/chapter/10.1007/978-3-319-46493-0_39)   |           | <mark style="background: #FF9696!important">ConvNeXt</mark> |
 | Weight_Decay        |    Weight decay, as a direct input to `torch.optim optimizers`.   |      | |
 
 | SCHEDULER parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----   |          :--- | |
+| :---        |    :----   |          :--- | ---: |
 | Lin_Gamma        |    Input of `torch.optim.lr_scheduler.stepLR`   |           | If Type=='stepLR' |
 | Lin_Step_Size        |    Input of `torch.optim.lr_scheduler.stepLR`   |           | If Type=='stepLR' |
 | Type        |    Type of scheduler.   |  <li>'stepLR'</li> <li>'cosine_warmup'</li>         | |
 | Warmup_Epochs        |    Number of warmup epochs for cosine scheduler (`transformers.optimization.get_cosine_schedule_with_warmup`)   |           | If Type=='cosine_warmup' |
 
 | VERBOSE parameters      | Description | Options/restrictions     |     Valid     |
-| :---        |    :----:   |          ---: | |
+| :---        |    :----:   |          ---: | ---: |
 | Data_Info        |    Boolean to provide additional information on the dataset after data splitting. See `utils.GetInfo`.   |           | |
