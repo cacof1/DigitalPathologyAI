@@ -32,22 +32,23 @@ source TileDataset.sh SlideDirectory/
 
 This will, in order, do:
 
-1. create a folder (Preprocessing) containing mask, patches, wsi, and stitches 
+1. create a folder (Preprocessing) containing mask, patches, wsi, and stitches
    1. A folder containing, for each slide, jpg showing the mask separation between tiles and background (mask)
    2. A folder containing, for each slide, h5 files containgCoords of each tile of interest within each slide (patches)
    3. A folder containing, for each slide, jpg showing a stitches of individual tiles at low resolution (stitches)
    4. A folder containing all of the wsi slides (moved there to minimize space usage) (wsi)
 2. Apply a NN to extract the coords of the patches that are within the tumour and update the patches csv file
-	 
+
 The data processing workflow is displayed below, where the tumorous parts in the whole slides images are used as region of interest for developing multiple applications including tumour subtype classification, mitosis detection and unsupervised culstering.  	 
 ![image](https://user-images.githubusercontent.com/44832648/137453431-ebe11082-40f9-4b23-937e-41a78a5949e1.png)
 
 ## Code Division
 The code has a series of separate goals to fulfill, and thus a modular programming approach is favoured. Preprocessing is shared by all codes and done with the shell file TileDataset.sh. Thereafter, the following blocks are suggested:
 * **DataLoader** : Dataloading should be done using the DataLoader class, which is in the DataLoader subfolder. The class contains both a Data Generator (for inference), and a pytorch Data Module (for training). Important are the keywords arguments dim (dimension of the patch), vis_level (magnification level), and inference (boolean).
-* **Model**: Models are stored in the Model subfolder. Generally, pre-written code should be imported from pytorch to minimize code error. Modified generic model are stored in small capital letter when needed (e.g. unet, resnet, where the latter are used for autoencoding). Code in Capital letters (e.g. AutoEncoding) will contains a full pytorch modular construction, and answer to a specific problem. These models may have a specific __main__ examplar, but should generally be used and defined as a standalone. 
+* **Model**: Models are stored in the Model subfolder. Generally, pre-written code should be imported from pytorch to minimize code error. Modified generic model are stored in small capital letter when needed (e.g. unet, resnet, where the latter are used for autoencoding). Code in Capital letters (e.g. AutoEncoding) will contains a full pytorch modular construction, and answer to a specific problem. These models may have a specific __main__ examplar, but should generally be used and defined as a standalone.
 * **Losses** : Subfolder containing non-generic loss functions
-* **Inference** : Subfolder containing the assembled application, e.g. clustering, autoencoding, classifying. Each application will 1. load the DataLoader and data, 2. load the model, and perform training in batches and return the results. 
+* **Training** : This contains main codes to train models; for instance, Image_Classifier can be used for tile-wise classification. All training codes use a `config file` as an input. Please see the wiki (configuration file page) for details on how to set up the configuration file.
+* **Inference** : Subfolder containing the assembled application, e.g. clustering, autoencoding, classifying. Each application will 1. load the DataLoader and data, 2. load the model, and perform training in batches and return the results.
 * **wsi_core** : Extracted snippet from the CLAM project that extract patches contours and remove background.
 
 
