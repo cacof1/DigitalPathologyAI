@@ -6,8 +6,10 @@ from torch import Tensor
 from torch.nn.functional import softmax
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange, Reduce
-# Model loosely based on: https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632,
-# and https://amaarora.github.io/2021/01/18/ViT.html
+
+# Model loosely based on
+# - https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632,
+# - https://amaarora.github.io/2021/01/18/ViT.html
 
 
 class PatchEmbedding(nn.Module):
@@ -35,20 +37,20 @@ class PatchEmbedding(nn.Module):
         return x  # size (b, n+1, e)
 
 
-class MHA(nn.Module):
+class MSA(nn.Module): ## multihead self-attention
     def __init__(self, emb_size: int = 512, num_heads: int = 8, drop: float = 0):
         super().__init__()
         self.keys = nn.Linear(emb_size, emb_size)
         self.queries = nn.Linear(emb_size, emb_size)
         self.values = nn.Linear(emb_size, emb_size)
-        self.MHA = nn.MultiheadAttention(emb_size, num_heads, dropout=drop, bias=False, batch_first=True)
+        self.MSA = nn.MultiheadAttention(emb_size, num_heads, dropout=drop, bias=False, batch_first=True)
 
     def forward(self, x: Tensor, mask: Tensor = None) -> Tensor:
         # Input arrays are of size (b, n+1, e), compatible with nn.MultiHeadAttention (with batch_first=True)
         queries = self.queries(x)
         keys = self.keys(x)
         values = self.values(x)
-        out, attention = self.MHA(queries, keys, values)  # TODO: export attention
+        out, attention = self.MSA(queries, keys, values)  # TODO: export attention
         return out
 
 
@@ -66,7 +68,7 @@ class TransformerEncoderBlock(nn.Sequential):
         super().__init__(
             ResidualAdd(nn.Sequential(
                         nn.LayerNorm(emb_size),
-                        MHA(emb_size, drop=drop, **kwargs),
+                        MSA(emb_size, drop=drop, **kwargs),
                         )),
             ResidualAdd(nn.Sequential(
                         nn.LayerNorm(emb_size),
@@ -91,7 +93,7 @@ class TransformerEncoder(nn.Sequential):
 class ClassificationHead(nn.Sequential):
     def __init__(self, emb_size: int = 768, n_classes: int = 1000):
         super().__init__(
-            #Reduce('b n e -> b e', reduction='mean'), ## b is batch, n is number of sub-patches, e is embedding. Average over all sub-patches
+            Reduce('b n e -> b e', reduction='mean'), ## b is batch, n is number of sub-patches, e is embedding. Average over all sub-patches
             nn.LayerNorm(emb_size), 
             nn.Linear(emb_size, n_classes))
 
@@ -99,21 +101,26 @@ class ViT(pl.LightningModule):
     def __init__(self, config, **kwargs):
         super().__init__()
         self.config = config
+        self.in_channels = 3  # hard coded. This should not change, but you can add it to config file if needed.
         self.forward_features = nn.Sequential(
-            PatchEmbedding(config["DATA"]["n_channel"], config["DATA"]["sub_patch_size"],
-                           config["MODEL"]["emb_size"], config["DATA"]["dim"][0][0]),
-            TransformerEncoder(config["MODEL"]["depth"], emb_size=config["MODEL"]["emb_size"],
-                               num_heads=config['MODEL']['n_heads_vit'], drop=config['MODEL']['Drop_Rate'],
+            PatchEmbedding(self.in_channels, config["DATA"]["Sub_Patch_Size"],
+                           config["MODEL"]["Emb_Size"], config["DATA"]["Dim"][0][0]),
+            TransformerEncoder(config["MODEL"]["Depth"], emb_size=config["MODEL"]["Emb_Size"],
+                               num_heads=config['MODEL']['N_heads_ViT'], drop=config['MODEL']['Drop_Rate'],
                                **kwargs),
         )
 
-        self.classification_head = ClassificationHead(config["MODEL"]["emb_size"], config["DATA"]["n_classes"])
+        self.classification_head = ClassificationHead(config["MODEL"]["Emb_Size"], config["DATA"]["N_Classes"])
 
-        self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["loss_function"])()
+        self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["Loss_Function"])()
+
+        if self.config['MODEL']['Loss_Function'] == 'CrossEntropyLoss':  # there is a bug currently. Quick fix...
+            self.loss_fcn = torch.nn.CrossEntropyLoss(label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
 
     def forward(self, x):
         x = self.forward_features(x)
-        x = self.classification_head(torch.squeeze(x[:, 0, :]))  # classify only using learned cls token
+        x = self.classification_head(x)  # classify using all heads
+        #x = self.classification_head(torch.squeeze(x[:, 0, :]))  # classify only using learned cls token
         return x
 
     def training_step(self, train_batch, batch_idx):
@@ -155,9 +162,33 @@ class ViT(pl.LightningModule):
         return softmax(self(image))
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.config["OPTIMIZER"]["lr"],
-                                     eps=self.config["OPTIMIZER"]["eps"],
-                                     weight_decay=self.config['OPTIMIZER']['weight_decay'])
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.config["OPTIMIZER"]["step_size"],
-                                                    gamma=self.config["OPTIMIZER"]["gamma"])
+        optimizer = getattr(torch.optim, self.config['OPTIMIZER']['Algorithm'])
+        optimizer = optimizer(self.parameters(),
+                              lr=self.config["OPTIMIZER"]["lr"],
+                              eps=self.config["OPTIMIZER"]["eps"],
+                              betas=(0.9, 0.999),
+                              weight_decay=self.config['REGULARIZATION']['Weight_Decay'])
+
+        if self.config['SCHEDULER']['Type'] == 'cosine_warmup':
+            # https://huggingface.co/docs/transformers/main_classes/optimizer_schedules
+            # https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
+            n_steps_per_epoch = self.config['DATA']['N_Training_Examples'] // self.config['MODEL']['Batch_Size']
+            total_steps = n_steps_per_epoch * self.config['MODEL']['Max_Epochs']
+            warmup_steps = self.config['SCHEDULER']['Warmup_Epochs'] * n_steps_per_epoch
+
+            sched = transformers.optimization.get_cosine_schedule_with_warmup(optimizer,
+                                                                              num_warmup_steps=warmup_steps,
+                                                                              num_training_steps=total_steps,
+                                                                              num_cycles=0.5)  # default lr->0.
+
+            scheduler = {'scheduler': sched,
+                         'interval': 'step',
+                         'frequency': 1}
+
+        elif self.config['SCHEDULER']['Type'] == 'stepLR':
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                                        step_size=self.config["SCHEDULER"]["Lin_Step_Size"],
+                                                        gamma=self.config["SCHEDULER"][
+                                                            "Lin_Gamma"])  # step size 5, gamma =0.5
+
         return ([optimizer], [scheduler])

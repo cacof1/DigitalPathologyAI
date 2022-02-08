@@ -2,34 +2,38 @@ from torchvision import transforms
 import torch
 import pytorch_lightning as pl
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, WSIQuery, DataGenerator
-from Model.ImageClassifier import ImageClassifier
-from pytorch_lightning.callbacks import ModelCheckpoint
+from Model.ConvNet import ConvNet
+from Model.ConvNeXt import ConvNeXt
+from Model.Transformer import ViT
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 import toml
 from utils import GetInfo
 from torch.utils.data import DataLoader
-from torchmetrics.functional import accuracy, confusion_matrix
-import numpy as np
+
 
 # Load configuration file and name
-config = toml.load('SarcomaTrainer.ini')
+#config = toml.load(sys.argv[1])
+#config = toml.load('trainer_sarcoma_convnet.ini')
+config = toml.load('trainer_sarcoma_vit.ini')
 name = GetInfo.format_model_name(config)
 
 # Set up all logging
 logger = TensorBoardLogger('lightning_logs', name=name)
+lr_monitor = LearningRateMonitor(logging_interval='step')
 checkpoint_callback = ModelCheckpoint(
     dirpath     =config['MODEL']['Model_Save_Path'],
-    monitor     =config['CHECKPOINT']['monitor'],
-    filename    =name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['monitor'] + '{' + config['CHECKPOINT']['monitor'] + ':.2f}',
+    monitor     =config['CHECKPOINT']['Monitor'],
+    filename    =name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' + config['CHECKPOINT']['Monitor'] + ':.2f}',
     save_top_k  =1,
-    mode        =config['CHECKPOINT']['mode'])
+    mode        =config['CHECKPOINT']['Mode'])
 
-pl.seed_everything(config['MODEL']['RANDOM_SEED'], workers=True)
+pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
 # Return WSI according to the selected CRITERIA in the configuration file.
 ids = WSIQuery(config)
 
-if config['DATA']['target'] == 'sarcoma_label':  # TODO : potentially move the following step out of Image_Classifier
+if config['DATA']['Target'] == 'sarcoma_label':  # TODO : potentially move the following step out of Image_Classifier
     # Specific to sarcoma study: make sure that all ids have their "sarcoma_label" target.
     # For another target, make sure you use your own function to append your targets to csv files.
     from __local.SarcomaClassification.Methods import AppendSarcomaLabel
@@ -39,29 +43,38 @@ if config['DATA']['target'] == 'sarcoma_label':  # TODO : potentially move the f
 # Load coords_file
 coords_file = LoadFileParameter(ids, config['DATA']['SVS_Folder'], config['DATA']['Patches_Folder'])
 
-if config['DATA']['target'] == 'sarcoma_label':  # TODO: maybe encode more efficiently in the config file.
+if config['DATA']['Target'] == 'sarcoma_label':  # TODO: maybe encode more efficiently in the config file.
     # Select a subset of coords files. In the sarcoma study, we only consider patches labelled as tumour.
     coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]
 
-transform = transforms.Compose([
+# Augment data on the training set
+train_transform = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'], magnitude=9),  # this only operates on 8-bit images (not normalised float32 tensors)
+    transforms.ToTensor(),  # this also normalizes to [0,1].,
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+# No data augmentation on the validation settens
+val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-if config['MODEL']['inference'] is False:  # train
+if config['MODEL']['Inference'] is False:  # train
     data = DataModule(
         coords_file,
         batch_size=config['MODEL']['Batch_Size'],
-        train_transform=transform,
-        val_transform=transform,
+        train_transform=train_transform,
+        val_transform=val_transform,
         inference=False,
-        dim_list=config['DATA']['dim'],
-        vis_list=config['DATA']['vis'],
-        n_per_sample=config['DATA']['n_per_sample'],
-        target=config['DATA']['target']
+        dim_list=config['DATA']['Dim'],
+        vis_list=config['DATA']['Vis'],
+        n_per_sample=config['DATA']['N_Per_Sample'],
+        target=config['DATA']['Target']
     )
 else:  # prediction does not use train/validation sets, only directly the dataloader.
-    data = DataLoader(DataGenerator(coords_file, transform=transform, inference=True),
+    data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=True),
                       batch_size=config['MODEL']['Batch_Size'],
                       num_workers=10,
                       shuffle=False,
@@ -69,20 +82,43 @@ else:  # prediction does not use train/validation sets, only directly the datalo
 
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 GetInfo.ShowTrainValTestInfo(data, config)
+config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 
 # Load model and train/infer
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['MODEL']['Max_Epochs'],
-                     precision=config['MODEL']['Precision'], callbacks=[checkpoint_callback], logger=logger)
+                     precision=config['MODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor], logger=logger)
 
-if config['MODEL']['inference'] is False:  # train
-    model = ImageClassifier(config)
+if config['MODEL']['Inference'] is False:  # train
+
+    if config['MODEL']['Base_Model'].lower() == 'convnet':
+        model = ConvNet(config)
+    elif config['MODEL']['Base_Model'].lower() == 'vit':
+        model = ConvNeXt(config)
+    elif config['MODEL']['Base_Model'].lower() == 'convnext':
+        model = ViT(config)
+    else:
+        raise RuntimeError('No existing model associated with "' + config['MODEL']['Base_Model'] + '".')
+
     trainer.fit(model, data)
+
 else:  # infer
-    model = ImageClassifier.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
+
+    if config['MODEL']['Base_Model'].lower() == 'convnet':
+        model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
+    elif config['MODEL']['Base_Model'].lower() == 'vit':
+        model = ConvNeXt.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
+    elif config['MODEL']['Base_Model'].lower() == 'convnext':
+        model = ViT.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
+    else:
+        raise RuntimeError('No existing model associated with "' + config['MODEL']['Base_Model'] + '".')
+
     model.eval()
     predictions = trainer.predict(model, data)
     predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))
 
     for i in range(predicted_classes_prob.shape[1]):
         SaveFileParameter(coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
-                          'prob_' + config['DATA']['target'] + str(i))
+                          'prob_' + config['DATA']['Target'] + str(i))
+
+
+
