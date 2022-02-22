@@ -1,0 +1,10 @@
+__local/
+.idea/
+Preprocessing/
+*/lightning_logs/
+*/__pycache__/
+QA/masks/
+QA/stiches/
+patches/
+PretrainedModel/
+Inference/wsi_core/

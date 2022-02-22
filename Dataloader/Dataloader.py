@@ -1,20 +1,11 @@
 import matplotlib.pyplot as plt
 from pytorch_lightning import LightningDataModule, LightningModule, Trainer, seed_everything
-import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
-from torchvision import transforms
 import pandas as pd
-import os
 from pathlib import Path
 from sklearn.model_selection import train_test_split
-##Normalization
-from Normalization.Macenko import MacenkoNormalization, TorchMacenkoNormalizer
 import numpy as np
 import torch
-import random
-import openslide
-import sys, glob
-import torch.nn.functional as F
 from wsi_core.WholeSlideImage import WholeSlideImage
 
 class DataGenerator(torch.utils.data.Dataset):
@@ -29,7 +20,6 @@ class DataGenerator(torch.utils.data.Dataset):
         self.vis_list = vis_list
         self.dim_list = dim_list
         self.inference = inference
-        self.normalizer = TorchMacenkoNormalizer()
         self.target = target
 
     def __len__(self):
@@ -45,13 +35,6 @@ class DataGenerator(torch.utils.data.Dataset):
                 key = "_".join(map(str,dim))+"_"+str(vis_level)
                 data_dict[key]  = np.array(wsi_file.wsi.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
                                                                      vis_level, dim).convert("RGB"))
-                
-        ## Normalization -- not great so far, but buggy otherwise
-        # try:
-        #    data_dict, H, E  = self.normalizer.normalize(data_dict)
-        #    #data_dict, H, E = MacenkoNormalization(data_dict)
-        # except:
-        #    pass
 
         ## Transform - Data Augmentation
 
@@ -84,7 +67,7 @@ class DataModule(LightningDataModule):
 
         svi = np.unique(coords_file.file_id)
         np.random.shuffle(svi)
-        train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size) #, test_idx = np.split(svi, [int(len(svi)*train_size), 1+int(len(svi)*train_size) + int(len(svi)*val_size)])
+        train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size)
         self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], transform=train_transform, **kwargs)
         self.val_data   = DataGenerator(coords_file[coords_file.file_id.isin(val_idx)],   transform=val_transform, **kwargs)
 
@@ -106,7 +89,7 @@ def LoadFileParameter(ids, svs_folder, patch_folder):
             PatchPath = Path(patch_folder, '{}.csv'.format(file_id))
             WSIPath = Path(svs_folder, '{}.svs'.format(file_id))
 
-            coords = pd.read_csv(PatchPath, header=0)
+            coords = pd.read_csv(PatchPath, header=0, index_col=0)
             coords = coords.astype({"coords_y": int, "coords_x": int})
             coords['file_id'] = file_id
             coords['wsi_path'] = str(WSIPath)

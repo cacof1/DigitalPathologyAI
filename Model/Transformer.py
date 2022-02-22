@@ -106,7 +106,7 @@ class ViT(pl.LightningModule):
             PatchEmbedding(self.in_channels, config["DATA"]["Sub_Patch_Size"],
                            config["MODEL"]["Emb_Size"], config["DATA"]["Dim"][0][0]),
             TransformerEncoder(config["MODEL"]["Depth"], emb_size=config["MODEL"]["Emb_Size"],
-                               num_heads=config['MODEL']['N_heads_ViT'], drop=config['MODEL']['Drop_Rate'],
+                               num_heads=config['MODEL']['N_Heads_ViT'], drop=config['MODEL']['Drop_Rate'],
                                **kwargs),
         )
 

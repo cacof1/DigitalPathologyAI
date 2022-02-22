@@ -10,12 +10,16 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import toml
 from utils import GetInfo
 from torch.utils.data import DataLoader
+import torchstain
+from QA.Normalization.Colour import ColourNorm
 
 
 # Load configuration file and name
 #config = toml.load(sys.argv[1])
-#config = toml.load('trainer_sarcoma_convnet.ini')
-config = toml.load('trainer_sarcoma_vit.ini')
+config = toml.load('trainer_sarcoma_convnet.ini')
+#config = toml.load('infer_sarcoma_convnet_SFThigh.ini')
+#config = toml.load('trainer_sarcoma_vit.ini')
+#config = toml.load('trainer_sarcoma_convnext.ini')
 name = GetInfo.format_model_name(config)
 
 # Set up all logging
@@ -48,12 +52,32 @@ if config['DATA']['Target'] == 'sarcoma_label':  # TODO: maybe encode more effic
     coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]
 
 # Augment data on the training set
-train_transform = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'], magnitude=9),  # this only operates on 8-bit images (not normalised float32 tensors)
-    transforms.ToTensor(),  # this also normalizes to [0,1].,
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+if config['AUGMENTATION']['Rand_Operations'] > 0:
+    train_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Lambda(lambda x: x*255) if config['QC']['Macenko_Norm'] else None,
+        ColourNorm.Macenko(saved_fit_file='../QA/Normalization/Colour/trained/484813_vis0_HERef.pt') if config['QC']['Macenko_Norm'] else None,
+        transforms.Lambda(lambda x: x/255) if config['QC']['Macenko_Norm'] else None,
+        transforms.ToPILImage(),
+        transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'], magnitude=config['AUGMENTATION']['Rand_Magnitude']),  # this only operates on 8-bit images (not normalised float32 tensors)
+        transforms.ToTensor(),  # this also normalizes to [0,1].,
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+else:
+    train_transform = transforms.Compose([
+        transforms.ToTensor(),  # this also normalizes to [0,1].,
+        transforms.Lambda(lambda x: x * 255) if config['QC']['Macenko_Norm'] else None,
+        ColourNorm.Macenko(saved_fit_file='../QA/Normalization/Colour/trained/484813_vis0_HERef.pt') if config['QC']['Macenko_Norm'] else None,
+        transforms.Lambda(lambda x: x / 255) if config['QC']['Macenko_Norm'] else None,
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+
+
+#torchstain
+
+
+print('Should data be normalised with convnext?!')
 
 # No data augmentation on the validation settens
 val_transform = transforms.Compose([
@@ -73,6 +97,8 @@ if config['MODEL']['Inference'] is False:  # train
         n_per_sample=config['DATA']['N_Per_Sample'],
         target=config['DATA']['Target']
     )
+    config['DATA']['N_Training_Examples'] = data.train_data.__len__()
+
 else:  # prediction does not use train/validation sets, only directly the dataloader.
     data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=True),
                       batch_size=config['MODEL']['Batch_Size'],
@@ -82,7 +108,6 @@ else:  # prediction does not use train/validation sets, only directly the datalo
 
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 GetInfo.ShowTrainValTestInfo(data, config)
-config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 
 # Load model and train/infer
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['MODEL']['Max_Epochs'],
@@ -92,9 +117,9 @@ if config['MODEL']['Inference'] is False:  # train
 
     if config['MODEL']['Base_Model'].lower() == 'convnet':
         model = ConvNet(config)
-    elif config['MODEL']['Base_Model'].lower() == 'vit':
-        model = ConvNeXt(config)
     elif config['MODEL']['Base_Model'].lower() == 'convnext':
+        model = ConvNeXt(config)
+    elif config['MODEL']['Base_Model'].lower() == 'vit':
         model = ViT(config)
     else:
         raise RuntimeError('No existing model associated with "' + config['MODEL']['Base_Model'] + '".')
@@ -105,9 +130,9 @@ else:  # infer
 
     if config['MODEL']['Base_Model'].lower() == 'convnet':
         model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
-    elif config['MODEL']['Base_Model'].lower() == 'vit':
-        model = ConvNeXt.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
     elif config['MODEL']['Base_Model'].lower() == 'convnext':
+        model = ConvNeXt.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
+    elif config['MODEL']['Base_Model'].lower() == 'vit':
         model = ViT.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
     else:
         raise RuntimeError('No existing model associated with "' + config['MODEL']['Base_Model'] + '".')

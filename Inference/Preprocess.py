@@ -14,14 +14,19 @@ if __name__ == '__main__':
     parser.add_argument('--source', type = str, help='path to folder containing raw wsi image files')
     parser.add_argument('--step_size', type = int, default=256, help='step_size')
     parser.add_argument('--patch_size', type = int, default=256, help='patch_size')
-    parser.add_argument('--patch', default=False, action='store_true')
-    parser.add_argument('--seg', default=False, action='store_true')
-    parser.add_argument('--stitch', default=False, action='store_true')
+    parser.add_argument('--patch', default=True, action='store_true')
+    parser.add_argument('--seg', default=True, action='store_true')
+    parser.add_argument('--stitch', default=True, action='store_true')
     parser.add_argument('--no_auto_skip', default=True, action='store_false')
     parser.add_argument('--save_dir', type = str, help='directory to save processed data')
     parser.add_argument('--patch_level', type=int, default=0, help='downsample level at which to patch')
-    
-    args = parser.parse_args()
+
+    args = parser.parse_args(['--source', '/home/mikael/Documents/data/digpath/sarcoma_10_SFT_high/',
+                              '--save_dir', '/home/mikael/Documents/data/digpath/sarcoma_10_SFT_high/',
+                              '--patch_size', '256',
+                              '--step_size', '256',
+                              ])
+
     config = vars(args)
     config["patch_save_dir"] = os.path.join(args.save_dir, 'patches')
     config["mask_save_dir"] = os.path.join(args.save_dir, 'QA','masks')
