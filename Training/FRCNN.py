@@ -49,11 +49,8 @@ df_all = df[df['num_objs']==1]
 df_all = df_all[df_all['QA']==1]
 filenames = df_all.filename.value_counts().index.to_list()
 
-filenames_test = ['210002933','210000003','1f_180122','9a_170029','7a_210222']
-filenames_val = ['1i_180122','1f_180122','1h_180122','1f_180122',
-                 '10a_170207','6a_165331','4a_165444',
-                 '210005378','210005351','210000009',
-                 '210000008','210000006','6a_210222','7a_210222']
+filenames_test = config['Data']['Testing']
+filenames_val = config['Data']['Validating']
 
 df_train = df_all[~df_all['filename'].isin(filenames_test+filenames_val)]
 df_train.reset_index(drop = True, inplace = True)
