@@ -25,11 +25,12 @@ from StainNorm import normalizeStaining
 class DataGenerator_Mitosis(torch.utils.data.Dataset):
     def __init__(self,
                  df, 
-                 mask_path,
+                 mask_path=None,
                  region_level = 'patch',#or 'cell'
                  transforms=None,
                  augmentation=None, 
-                 predicting=False):
+                 predicting=False,
+                 inference=False):
         
         self.df = df
         self.mask_path = mask_path
@@ -37,28 +38,33 @@ class DataGenerator_Mitosis(torch.utils.data.Dataset):
         self.transforms = transforms        
         self.augmentation = augmentation
         self.predicting = predicting
+        self.inference = inference
 
     def __getitem__(self, i):
         
         vis_level = 0
         dim = (256,256)
-        index = self.df['index'][i]
-        filename = self.df['filename'][i]        
-        top_left = (self.df['mitosis_coord_x'][i],self.df['mitosis_coord_y'][i])
+       
         wsi_path = self.df['wsi_path']
-        
         wsi_object = WholeSlideImage(wsi_path)  
-
         img = np.array(wsi_object.wsi.read_region(top_left, vis_level, dim).convert("RGB"))
-        num_objs = self.df['num_objs'][i]  
-        
         try:
             img,H,E = normalizeStaining(img)
         except:
             pass
         
+        if self.predicting:
+            if self.transforms:
+                img = self.transforms(img)
+                
+            return img
+        
+        index = self.df['index'][i]
+        filename = self.df['filename'][i]        
+        top_left = (self.df['mitosis_coord_x'][i],self.df['mitosis_coord_y'][i])
+        num_objs = self.df['num_objs'][i]  
+        
         mask = np.load(self.mask_path + '/{}_masks.npy'.format(filename))[index]
-              
         pos = np.where(mask==255)
         xmin = np.min(pos[1])
         xmax = np.max(pos[1])
@@ -102,7 +108,6 @@ class DataGenerator_Mitosis(torch.utils.data.Dataset):
         box = torch.as_tensor(box, dtype=torch.float32)
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
         image_id = torch.tensor([i])
-        
 
         target = {}
         target["boxes"] = box
@@ -121,11 +126,11 @@ class DataGenerator_Mitosis(torch.utils.data.Dataset):
             
             if self.transforms:
                 img, target = self.transforms(img, target)
-                             
-            if self.predicting:
+                
+            if self.inference:
                 return img
-            else:          
-                return img, target     
+                             
+            return img, target     
             
         if self.region_level == 'cell':
             
@@ -138,11 +143,10 @@ class DataGenerator_Mitosis(torch.utils.data.Dataset):
                 cell_mask = sample['mask'][np.newaxis,:, :]
                 cell_mask = torch.as_tensor(cell_mask, dtype=torch.float32)
                      
-            if self.predicting:
+            if self.inference:
                 return cell
             
-            else:
-                return cell, cell_mask 
+            return cell, cell_mask 
             
     def __len__(self):
         return self.df.shape[0]
