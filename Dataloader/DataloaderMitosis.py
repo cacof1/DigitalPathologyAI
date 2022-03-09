@@ -23,23 +23,31 @@ from StainNorm import normalizeStaining
 
 
 class DataGenerator_Mitosis(torch.utils.data.Dataset):
-    def __init__(self,df, wsi_path, mask_path,transform=None):
-        self.transforms = transforms
+    def __init__(self,
+                 df, 
+                 mask_path,
+                 region_level = 'patch',#or 'cell'
+                 transforms=None,
+                 augmentation=None, 
+                 predicting=False):
+        
         self.df = df
-        self.normalizer = TorchMacenkoNormalizer()
-        self.transform = transform
+        self.mask_path = mask_path
+        self.region_level = region_level
+        self.transforms = transforms        
+        self.augmentation = augmentation
+        self.predicting = predicting
 
     def __getitem__(self, i):
-        # load images and masks
+        
         vis_level = 0
         dim = (256,256)
-                
         index = self.df['index'][i]
-        
         filename = self.df['filename'][i]        
         top_left = (self.df['mitosis_coord_x'][i],self.df['mitosis_coord_y'][i])
+        wsi_path = self.df['wsi_path']
         
-        wsi_object = WholeSlideImage(wsi_path + '/{}.svs'.format(filename))  
+        wsi_object = WholeSlideImage(wsi_path)  
 
         img = np.array(wsi_object.wsi.read_region(top_left, vis_level, dim).convert("RGB"))
         num_objs = self.df['num_objs'][i]  
@@ -48,69 +56,108 @@ class DataGenerator_Mitosis(torch.utils.data.Dataset):
             img,H,E = normalizeStaining(img)
         except:
             pass
-            
-        if num_objs == 0:
-            mask = np.zeros((dim[0], dim[1]))
-            obj_ids = np.unique(mask)[:]
-            masks = mask != obj_ids[:, None, None]
-            boxes = torch.zeros((0, 4), dtype=torch.float32)
-            area = [0]
-            
-        else:         
-            mask = np.load(mask_path + '/{}_mitosis_masks.npy'.format(filename))[index]
-            masks = mask[np.newaxis,:, :]
-            boxes = []  
-            area = []
-            
-            for n in range(num_objs):
-                pos = np.where(masks[n]==255)
-                xmin = np.min(pos[1])
-                xmax = np.max(pos[1])
-                ymin = np.min(pos[0])
-                ymax = np.max(pos[0])
-                boxes.append([xmin, ymin, xmax, ymax])
-                area.append((xmax - xmin) * (ymax - ymin))
-            
-            boxes = torch.as_tensor(boxes, dtype=torch.float32)
-
-            obj_ids = np.unique(mask)[1:]       
-            masks = mask == obj_ids[:, None, None]
         
-        masks = torch.as_tensor(masks, dtype=torch.uint8)
-            
+        mask = np.load(self.mask_path + '/{}_masks.npy'.format(filename))[index]
+              
+        pos = np.where(mask==255)
+        xmin = np.min(pos[1])
+        xmax = np.max(pos[1])
+        ymin = np.min(pos[0])
+        ymax = np.max(pos[0])
+        box = [xmin, ymin, xmax, ymax]
+        area = (xmax - xmin) * (ymax - ymin)
+        
+        center = (int(0.5*(xmax+xmin)),int(0.5*(ymax+ymin)))
+        
+        x1 = int(center[0]-32)
+        x2 = int(center[0]+32)
+        y1 = int(center[1]-32)
+        y2 = int(center[1]+32)
+        
+        if x1 < 0:
+            x1 = 0
+            x2 = x1 + 64
+        if x2 > 256:
+            x2 = 256
+            x1 = x2 - 64
+        if y1 < 0:
+            y1 = 0
+            y2 = y1 + 64
+        if y2 >256:
+            y2 = 256
+            y1 = y2 - 64
+                
+        region = (x1,x2,y1,y2) 
+                                        
+        cell = img[region[2]:region[3],region[0]:region[1]]
+        cell_mask = mask[region[2]:region[3],region[0]:region[1]]
+
+        obj_ids = np.unique(mask)[1:]       
+        mask = mask == obj_ids[:, None, None]
+        obj_ids = np.unique(cell_mask)[1:]       
+        cell_mask = cell_mask == obj_ids[:, None, None]
+        
         labels = torch.ones((num_objs,), dtype=torch.int64)   
         area = torch.as_tensor(area, dtype=torch.float32)
-        
+        box = torch.as_tensor(box, dtype=torch.float32)
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
         image_id = torch.tensor([i])
+        
 
         target = {}
-        target["boxes"] = boxes
+        target["boxes"] = box
         target["labels"] = labels
         target["image_id"] = image_id
         target['area'] = area
         target["iscrowd"] = iscrowd        
-        target["masks"] = masks
-
-        if self.transform is not None:
-            img, target = self.transform(img,target)
+        
+        if self.region_level == 'patch':
             
-        return img, target
-
+            if self.augmentation:
+                img, mask = self.augmentation(img, mask)
+                
+            mask = torch.as_tensor(mask, dtype=torch.uint8)
+            target["masks"] = mask
+            
+            if self.transforms:
+                img, target = self.transforms(img, target)
+                             
+            if self.predicting:
+                return img
+            else:          
+                return img, target     
+            
+        if self.region_level == 'cell':
+            
+            if self.augmentation:
+                cell,mask = self.augmentation(cell,mask)
+        
+            if self.transforms:               
+                sample = self.transforms(image=cell, mask=cell_mask)
+                cell = torch.as_tensor(sample['image'], dtype=torch.float32)
+                cell_mask = sample['mask'][np.newaxis,:, :]
+                cell_mask = torch.as_tensor(cell_mask, dtype=torch.float32)
+                     
+            if self.predicting:
+                return cell
+            
+            else:
+                return cell, cell_mask 
+            
     def __len__(self):
         return self.df.shape[0]
     
     
     
 class DataModule_Mitosis(LightningDataModule):
-    def __init__(self, mitosis_file, wsi_path, mask_path, batch_size = 1, train_transform = None, val_transform = None,  **kwargs):
+    def __init__(self, mitosis_file, mask_path, batch_size = 1, train_transform = None, val_transform = None,  **kwargs):
         super().__init__()
         self.batch_size      = batch_size        
           
         ids_split            = np.round(np.array([0.7, 0.2, 1.0])*len(mitosis_file)).astype(np.int32)
-        self.train_data      = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], wsi_path, mask_path, transform = train_transform, **kwargs)
-        self.val_data        = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], wsi_path, mask_path,  transform = val_transform, **kwargs)
-        self.test_data       = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], wsi_path, mask_path, transform = val_transform, **kwargs)
+        self.train_data      = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], mask_path, transform = train_transform, **kwargs)
+        self.val_data        = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], mask_path,  transform = val_transform, **kwargs)
+        self.test_data       = DataGenerator_MitotsisDetection(mitosis_file[ids_split[0]:ids_split[1]], mask_path, transform = val_transform, **kwargs)
 
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size,num_workers=0)
