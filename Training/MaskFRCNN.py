@@ -79,4 +79,9 @@ data_loader_val = DataLoader(
 
 trainer   = pl.Trainer(gpus=1, max_epochs=config['MODEL']['Max_Epochs'],precision=config['MODEL']['Precision'], callbacks = callbacks,logger=logger)
 model     = MaskFRCNN(num_classes=2,lr=0.0025)
-trainer.fit(model, data_loader_train)
+trainer.fit(model, 
+            train_dataloaders=data_loader_train, 
+            val_dataloaders=data_loader_val,
+            )
+
+valid_metrics = trainer.validate(model, dataloaders=data_loader_val, verbose=False)
