@@ -15,7 +15,7 @@ from torchvision.ops import box_iou
 from utils.COCOengine import evaluate
 from Dataloader.DataloaderMitosis import DataModule_Mitosis
 import segmentation_models_pytorch as smp
-import smp_functional
+from utils import smp_functional
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
