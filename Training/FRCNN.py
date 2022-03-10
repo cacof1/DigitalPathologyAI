@@ -22,7 +22,7 @@ from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGene
 from pytorch_lightning.loggers import TensorBoardLogger
 import toml
 from Dataloader.DataloaderMitosis import DataGenerator,DataGenerator_Mitosis
-from Model.FasterRCNN import FasterRCNN
+from Model.MaskFRCNN import MaskFRCNN
 import transforms as T
 
 def get_transform(train):
@@ -78,5 +78,5 @@ data_loader_val = DataLoader(
         dataset_val, batch_size=1, shuffle=False, num_workers=0)
 
 trainer   = pl.Trainer(gpus=1, max_epochs=config['MODEL']['Max_Epochs'],precision=config['MODEL']['Precision'], callbacks = callbacks,logger=logger)
-model     = FasterRCNN(num_classes=2,lr=0.0025)
+model     = MaskFRCNN(num_classes=2,lr=0.0025)
 trainer.fit(model, data_loader_train)
