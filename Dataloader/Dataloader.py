@@ -7,6 +7,8 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import torch
 from wsi_core.WholeSlideImage import WholeSlideImage
+import glob
+import os
 
 class DataGenerator(torch.utils.data.Dataset):
 
@@ -55,8 +57,11 @@ class DataModule(LightningDataModule):
         super().__init__()
         self.batch_size = batch_size
         #coords_file = coords_file.groupby("file_id").sample(n=n_per_sample, replace=False)
+
+
         value_counts = coords_file.file_id.value_counts()
         fn_for_sampling = value_counts[value_counts > n_per_sample].index
+
         df1 = coords_file[coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(n=n_per_sample, replace=False)
 
         if fn_for_sampling.shape != value_counts.shape:  # if some datasets have less than n_per_sample
@@ -67,6 +72,7 @@ class DataModule(LightningDataModule):
 
         svi = np.unique(coords_file.file_id)
         np.random.shuffle(svi)
+
         train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size)
         self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], transform=train_transform, **kwargs)
         self.val_data   = DataGenerator(coords_file[coords_file.file_id.isin(val_idx)],   transform=val_transform, **kwargs)
@@ -78,16 +84,23 @@ def WSIQuery(config, **kwargs):  ## Select based on queries
 
     dataframe = pd.read_csv(config['DATA']['Mastersheet'])
     for key, item in config['CRITERIA'].items():
-        dataframe = dataframe[dataframe[key].isin(item)]
-    ids = dataframe['id']
+
+        if key == 'id':  # improve robustness if id is sometimes a string, sometimes a float.
+            dataframe = dataframe[dataframe[key].astype(str).isin(item)]
+        else:
+            dataframe = dataframe[dataframe[key].isin(item)]
+
+    ids = dataframe['id'].values
     return ids
 
 def LoadFileParameter(ids, svs_folder, patch_folder):
     coords_file = pd.DataFrame()
     for filenb, file_id in enumerate(ids):
         try:
+
             PatchPath = Path(patch_folder, '{}.csv'.format(file_id))
-            WSIPath = Path(svs_folder, '{}.svs'.format(file_id))
+            search_WSI_query = os.path.join(svs_folder, '**', str(file_id) + '.svs')
+            WSIPath = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
 
             coords = pd.read_csv(PatchPath, header=0, index_col=0)
             coords = coords.astype({"coords_y": int, "coords_x": int})

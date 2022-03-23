@@ -10,13 +10,14 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import toml
 from utils import GetInfo
 from torch.utils.data import DataLoader
-import torchstain
 from QA.Normalization.Colour import ColourNorm
 
 
 # Load configuration file and name
 #config = toml.load(sys.argv[1])
-config = toml.load('trainer_sarcoma_convnet.ini')
+#config = toml.load('trainer_sarcoma_convnet.ini')
+#config = toml.load('trainer_background_convnet.ini')
+config = toml.load('infer_background_convnet.ini')
 #config = toml.load('infer_sarcoma_convnet_SFThigh.ini')
 #config = toml.load('trainer_sarcoma_vit.ini')
 #config = toml.load('trainer_sarcoma_convnext.ini')
@@ -72,16 +73,14 @@ else:
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-
-
-#torchstain
-
-
 print('Should data be normalised with convnext?!')
 
 # No data augmentation on the validation settens
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
+    transforms.Lambda(lambda x: x * 255) if config['QC']['Macenko_Norm'] else None,
+    ColourNorm.Macenko(saved_fit_file='../QA/Normalization/Colour/trained/484813_vis0_HERef.pt') if config['QC']['Macenko_Norm'] else None,
+    transforms.Lambda(lambda x: x / 255) if config['QC']['Macenko_Norm'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
@@ -91,6 +90,8 @@ if config['MODEL']['Inference'] is False:  # train
         batch_size=config['MODEL']['Batch_Size'],
         train_transform=train_transform,
         val_transform=val_transform,
+        train_size=config['DATA']['Train_Size'],
+        val_size=config['DATA']['Val_Size'],
         inference=False,
         dim_list=config['DATA']['Dim'],
         vis_list=config['DATA']['Vis'],
@@ -112,6 +113,7 @@ GetInfo.ShowTrainValTestInfo(data, config)
 # Load model and train/infer
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['MODEL']['Max_Epochs'],
                      precision=config['MODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor], logger=logger)
+
 
 if config['MODEL']['Inference'] is False:  # train
 
