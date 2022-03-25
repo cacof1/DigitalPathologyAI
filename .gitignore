@@ -8,3 +8,7 @@ QA/stiches/
 patches/
 PretrainedModel/
 Inference/wsi_core/
+/openslide-python/
+/Training/config_files/
+*.pyc
+*.pyc

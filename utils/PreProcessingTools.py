@@ -8,8 +8,8 @@ import utils.OmeroTools
 from wsi_core.WholeSlideImage import WholeSlideImage
 from PIL import Image
 from tqdm import tqdm
-from joblib import delayed, Parallel
-import multiprocessing as mp
+from joblib import delayed, Parallel  # upcoming
+import multiprocessing as mp  # upcoming
 
 
 def ccw(A, B, C):
@@ -53,7 +53,6 @@ def plot_contour(xmin, xmax, ymin, ymax, colour='k'):
 
 
 def create_QA_overlay(df_export, WSI_object, patch_size, QA_path, ID, all_possible_labels):
-
     vis_level_view = 3
     N_classes = len(all_possible_labels)
 
@@ -68,10 +67,10 @@ def create_QA_overlay(df_export, WSI_object, patch_size, QA_path, ID, all_possib
     cmap.colors = cmap.colors[0:N_classes]
 
     # For visual aide: show all colors in the bottom left corner.
-    legend_coords = np.array([np.arange(0, N_classes*patch_size, patch_size), np.zeros(N_classes)]).T
+    legend_coords = np.array([np.arange(0, N_classes * patch_size, patch_size), np.zeros(N_classes)]).T
     legend_label = all_possible_labels
     all_labels = np.concatenate((legend_label, df_export['label'].values + 1), axis=0)
-    all_coords = np.concatenate((legend_coords ,np.array(df_export[["coords_x", "coords_y"]])), axis=0)
+    all_coords = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
 
     heatmap, overlay = WSI_object.visHeatmap(all_labels,
                                              all_coords,
@@ -84,27 +83,24 @@ def create_QA_overlay(df_export, WSI_object, patch_size, QA_path, ID, all_possib
                                              return_overlay=True)
 
     # Draw the contours for each label
-    pi = np.array(heatmap)
+    heatmap = np.array(heatmap)
     indexes_to_plot = np.unique(overlay[overlay > 0])
     for ii in range(len(indexes_to_plot)):
         im1 = 255 * (overlay == indexes_to_plot[ii]).astype(np.uint8)
         contours, hierarchy = cv2.findContours(im1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels + 1)[0][0]
+        cv2.drawContours(heatmap, contours, -1, 255 * cmap.colors[color_label], 3)
 
-        color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels+1)[0][0]
-        print(color_label)
-        cv2.drawContours(pi, contours, -1, 255 * cmap.colors[color_label], 3)
-
-    piPIL = Image.fromarray(pi)
-    piPIL.show()
+    heatmap_PIL = Image.fromarray(heatmap)
+    heatmap_PIL.show()
 
     # Export image to QA_path to evaluate the quality of the pre-processing.
     os.makedirs(QA_path, exist_ok=True)
     img_pth = os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')
-    piPIL.save(img_pth, 'pdf')
+    heatmap_PIL.save(img_pth, 'pdf')
 
 
-def tile_membership(edge, coords, patch_size, contours_idx_within_ROI, remove_outliers, WSI_object, df):
-
+def tile_membership(edge, coords, patch_size, contours_idx_within_ROI, remove_BW, WSI_object, df):
     # Start by assuming that the patch is within the contour, and remove it if it does not meet
     # a set of conditions.
 
@@ -135,16 +131,16 @@ def tile_membership(edge, coords, patch_size, contours_idx_within_ROI, remove_ou
 
     # Another condition: verify if the remove outlier condition is turned on, and apply.
     # This can be a bit slow as we need to load each patch and assess its colour.
-    if remove_outliers:
+    if remove_BW:
 
         patch = np.array(
             WSI_object.wsi.read_region(edge, 0, (patch_size, patch_size)).convert("RGB"))
         average_colour = np.mean(patch.reshape(patch_size ** 2, 3), axis=0)
-        patch_too_white = np.all(average_colour > remove_outliers * np.array([255.0, 255.0, 255.0]))
+        patch_too_white = np.all(average_colour > remove_BW * np.array([255.0, 255.0, 255.0]))
 
         if patch_too_white:
             return False
-        patch_too_dark = np.all(average_colour < remove_outliers * np.array([1.0, 1.0, 1.0]))
+        patch_too_dark = np.all(average_colour < remove_BW * np.array([1.0, 1.0, 1.0]))
 
         if patch_too_dark:
             return False
@@ -156,9 +152,10 @@ def tile_membership(edge, coords, patch_size, contours_idx_within_ROI, remove_ou
 
 
 def preprocess_WSI(vis=0, patch_size=256, patch_path=None, svs_path=None, ids=None,
-                   contour_path=None, contour_type='local', QA_path=None,
-                   specific_contours=False, omero_login=None, remove_outliers=None):
-    # LIST OF INPUTS
+                   contour_path=None, contour_type='local', QA_path=None, contour_mapping=False,
+                   specific_contours=False, omero_login=None, remove_BW=False, remove_BW_contours=False):
+
+    # LIST OF INPUTS (see wiki for more information)
     # -------------------------------- Required -------------------------------------
     # vis                : visibility level, leave at 0 for improved performance.
     # patch_size         : scalar value (256, 512, etc)
@@ -169,21 +166,25 @@ def preprocess_WSI(vis=0, patch_size=256, patch_path=None, svs_path=None, ids=No
     # -------------------------------- Optional -------------------------------------
     # contour_path       : string where contours are located or will be located, depending on contour_type below.
     #                      If empty, no contours will be used and the .csv will be generated using all tiles.
-    # contour_type       : options: 'local', 'omero'. If omero, then the 'omero_login' dict must be provided.
-    # specific_contours  : a list of contours that will be used; the rest are not used. If empty, uses all contours.
+    # contour_type       : options: 'local', 'omero', ''/false. If omero, then the 'omero_login' dict must be provided.
+    # specific_contours  : a list of contours that will be used; the rest are not used. If false, uses all contours.
+    # contour_mapping    : a list of strings specifying how to use/rename each contour.
+    #                      See config file or wiki for more details.
     # omero_login        : dict with fields required to run utils.OmeroTools.download_omero_ROIs.
     #                      Used if contour_type=='omero'.
-    # remove_outliers    : if set to a scalar value, this will remove, for each contour that you consider, all patches
-    #                      whose average colour is remove_outliers *[0, 0, 0] or remove_outliers * [255, 255, 255];
+    # remove_BW          : if set to a scalar value, this will remove, for each contour that you consider, all patches
+    #                      whose average colour is remove_BW *[0, 0, 0] or remove_BW * [255, 255, 255];
     #                      in other words, patches that are almost all white or all black are removed from the analysis,
     #                      as they provide no relevant information.
+    # remove_BW_contours : a list of contours on which to apply remove_BW defined above. By default, the procedure is
+    #                      applied to all contours.
 
     # Create patch exportation folder and score file names
     csv_save_dir = os.path.join(patch_path, 'csv_vis' + str(vis) + '_patch' + str(patch_size))
     os.makedirs(csv_save_dir, exist_ok=True)
 
-    if contour_path != '':
-        contour_files = []
+    contour_files = []
+    if contour_type == 'local' or contour_type == 'omero':
 
         # Create contours first. This will download all contours.
         if contour_type == 'omero':
@@ -193,9 +194,6 @@ def preprocess_WSI(vis=0, patch_size=256, patch_path=None, svs_path=None, ids=No
         # Then, load the local contours (same if contour_type is local or omero)
         for ID in ids:
             contour_files.append(os.path.join(contour_path, ID + '.svs [0]_roi_measurements.csv'))
-
-    else:
-        contour_files = []
 
     # The first thing we want to do is assign labels (numbers) to the names of contours. To do so, we must loop over
     # the existing datasets and find all the unique contour types. Also, if using a subset of all contours through
@@ -213,7 +211,50 @@ def preprocess_WSI(vis=0, patch_size=256, patch_path=None, svs_path=None, ids=No
             else:
                 contour_names.append(name)
 
-    contour_mapping = {'contour_name': list(set(contour_names)), 'contour_id': np.arange(len(set(contour_names)))}
+    unique_contour_names = list(set(contour_names))
+
+    # contour_names gives the name of all existing contours. In some cases, you might want to group some contours
+    # together, for instance all artifacts together, all fat [in] or [out] together, etc. We create a mapping
+    # from contour_names to contour_names_mapped to do so. If contour_mapping = '', skip this step and just process
+    # normally each contour.
+    if contour_mapping:
+
+        # Do some pre-processing to locate keys: remove spaces and use lowercase.
+        keys = [ctr.split(':')[0].replace(' ', '').lower() for ctr in contour_mapping]
+        values = [ctr.split(':')[1] for ctr in contour_mapping]
+        dict_contours_to_map = dict(zip(keys, values))
+        unique_contour_names_mapped = []
+
+        dict_mapped_contours_label = dict(zip(set(values), np.arange(len(set(values)))))
+        unique_contour_names_mapped_label = []
+        count_catch_contour = 0
+
+        for ctr_nm in list(unique_contour_names):
+            ctr_nm = ctr_nm.replace(' ', '').lower()
+            loc = [ctr_nm == key for key in dict_contours_to_map.keys()]
+            loc_star = [(key.replace('*', '') in ctr_nm) & ('*' in key) for key in dict_contours_to_map.keys() ]
+
+            if any(loc):  # if the contour exists in the mapping
+                unique_contour_names_mapped.append(dict_contours_to_map[ctr_nm])
+                unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map[ctr_nm]])
+            elif any(loc_star):  # if the contour exists, but it's in the format contour*
+                dict_key = [k for ki, k in enumerate(dict_contours_to_map.keys()) if loc_star[ki]][0]
+                unique_contour_names_mapped.append(dict_contours_to_map[dict_key])
+                unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map[dict_key]])
+            elif 'remaining' in keys:  # shortcut to assign all other contours to dict_contours_to_map['remaining']
+                unique_contour_names_mapped.append(dict_contours_to_map['remaining'])
+                unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map['remaining']])
+            else:  # otherwise, use the contour, do not modify it.
+                unique_contour_names_mapped.append(ctr_nm)
+                unique_contour_names_mapped_label.append(count_catch_contour + len(set(values)))
+                count_catch_contour += 1
+
+    else:
+        unique_contour_names_mapped = unique_contour_names
+        unique_contour_names_mapped_label = np.arange(len(unique_contour_names_mapped))
+
+    Full_Contour_Mapping = {'contour_name': unique_contour_names, 'mapped_contour_name': unique_contour_names_mapped,
+                            'contour_id': unique_contour_names_mapped_label}
 
     # Loop over each file and extract relevant indexes.
     for idx in range(len(ids)):
@@ -241,9 +282,10 @@ def preprocess_WSI(vis=0, patch_size=256, patch_path=None, svs_path=None, ids=No
 
             ROI_name = df['Text'][i]
 
-            print('Processing ROI "{}" ({}/{}) of ID "{}": '.format(ROI_name, str(i + 1), str(len(df)),str(ID)), end='')
+            print('Processing ROI "{}" ({}/{}) of ID "{}": '.format(ROI_name, str(i + 1), str(len(df)), str(ID)),
+                  end='')
 
-            if ROI_name not in contour_mapping['contour_name']:
+            if ROI_name not in Full_Contour_Mapping['contour_name']:
 
                 print('ROI not within selected contours, skipping.')
 
@@ -253,7 +295,8 @@ def preprocess_WSI(vis=0, patch_size=256, patch_path=None, svs_path=None, ids=No
 
                 if isinstance(df, pd.DataFrame):
                     coords = split_ROI_points(df['Points'][i]).astype(int)
-                    contour_label = [l for s, l in zip(contour_mapping['contour_name'], contour_mapping['contour_id'])
+                    contour_label = [l for s, l in
+                                     zip(Full_Contour_Mapping['contour_name'], Full_Contour_Mapping['contour_id'])
                                      if
                                      ROI_name in s]
 
@@ -304,16 +347,22 @@ def preprocess_WSI(vis=0, patch_size=256, patch_path=None, svs_path=None, ids=No
                 EX, EY = np.meshgrid(edges_x, edges_y)
                 edges_to_test = np.column_stack((EX.flatten(), EY.flatten()))
 
+                # if removing BW, validate if the current ROI should be processed
+                if ROI_name in remove_BW_contours:
+                    remove_BW_current_ROI = remove_BW
+                else:
+                    remove_BW_current_ROI = False
+
                 # Loop over all tiles and see if they are members of the current ROI
                 membership = np.full(len(edges_to_test), False)
                 for ei in tqdm(range(len(edges_to_test))):
                     membership[ei] = tile_membership(edges_to_test[ei, :], coords, patch_size, contours_idx_within_ROI,
-                                                     remove_outliers, WSI_object, df)
+                                                     remove_BW_current_ROI, WSI_object, df)
 
                 coord_x.append(edges_to_test[membership, 0])
                 coord_y.append(edges_to_test[membership, 1])
-                label.append(np.ones(np.sum(membership), dtype=int)*contour_label[0])  # should only be a single value.
-
+                label.append(
+                    np.ones(np.sum(membership), dtype=int) * contour_label[0])  # should only be a single value.
 
         # Once looped over all ROIs for a given index, export as csv
         coord_x = [item for sublist in coord_x for item in sublist]
@@ -325,15 +374,17 @@ def preprocess_WSI(vis=0, patch_size=256, patch_path=None, svs_path=None, ids=No
 
         # Finally, create the overlay for QA if using contours.
         if contour_files:
-            all_possible_labels = contour_mapping['contour_id']
+            all_possible_labels = np.array(list(set(Full_Contour_Mapping['contour_id'])))  # only unique
             create_QA_overlay(df_export, WSI_object, patch_size, QA_path, ID, all_possible_labels)
             print('QA overlay exported at: {}'.format(os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')))
 
+        print('--------------------------------------------------------------------------------')
+
+
     # Once looped over all indexes: export csv that provides the mapping between contour_name and contour_id.
-    df_mapping = pd.DataFrame(contour_mapping)
+    df_mapping = pd.DataFrame(Full_Contour_Mapping)
     out_mapping = os.path.join(csv_save_dir, 'mapping.csv')
     df_mapping.to_csv(out_mapping)
-    print('--------------------------------------------')
     print('Mapping exported at: {}'.format(out_mapping))
 
     return
