@@ -107,16 +107,30 @@ def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, target
                         ROI_name = []
                         ROI_id = []
                         image_name = []
+                        ROI_type =  []
                         for roi in found_rois.rois:
                             for s in roi.copyShapes():
-                                ROI_points.append(s.getPoints().getValue())
+
+                                if s.__class__.__name__ == 'PolygonI':
+                                    ROI_points.append(s.getPoints().getValue())
+                                elif s.__class__.__name__ == 'RectangleI':
+                                    xmin = str(round(s.getX().getValue(), 1))
+                                    xmax = str(round(s.getX().getValue(), 1) + round(s.getWidth().getValue(), 1))
+                                    ymin = str(round(s.getY().getValue(), 1))
+                                    ymax = str(round(s.getY().getValue(), 1) + round(s.getHeight().getValue(), 1))
+                                    fullstr = xmin + ',' + ymin + ' ' + xmax + ',' + ymin + ' ' + xmax + ',' + ymax + \
+                                                    ' ' + xmin + ',' + ymax
+                                    ROI_points.append(fullstr)
+
+                                ROI_type.append('polygon')
                                 ROI_name.append(s.getTextValue().getValue())
                                 ROI_id.append(s.getId().getValue())
                                 image_name.append(id_string_omero)
 
                         os.makedirs(download_path, exist_ok=True)
                         df = pd.DataFrame(
-                            {'image_name': image_name, 'roi_id': ROI_id, 'Text': ROI_name, 'Points': ROI_points})
+                            {'image_name': image_name, 'type': ROI_type, 'roi_id': ROI_id, 'Text': ROI_name,
+                             'Points': ROI_points})
                         export_file = download_path + id_string_omero + '_roi_measurements.csv'
                         df.to_csv(export_file)
                         print('OMERO: {}/{} ROIs exported to location: {}'.format(len(ROI_name),str(image.getROICount()),export_file))
@@ -218,7 +232,6 @@ if __name__ == '__main__':
     download_omero_ROIs(host=host, user=user, pw=pw, target_group=target_group, target_member=target_member, ids=ids,
                         download_path=download_path)
 
-    potato
     # Example of how to use the upload_omero_polygon_ROIs function:
 
     # Input parameters
