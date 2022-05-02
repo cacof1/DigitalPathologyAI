@@ -5,6 +5,7 @@ try:
     from omero.api import RoiOptions
     from omero.rtypes import rstring, rlong, unwrap, rdouble, rint
     from omero.gateway import BlitzGateway
+    from omero.cli import cli_login, CLI
     import omero
 except ImportError:
     print('Unable to load omero modules. Make sure they are installed, otherwise you will not be able to use omero'
@@ -70,6 +71,13 @@ def rgba_to_int(red, green, blue, alpha=255):
     if rgba_int > (2 ** 31 - 1):  # convert to signed 32-bit int
         rgba_int = rgba_int - 2 ** 32
     return rgba_int
+
+
+
+def download_image(imageid, image_dir, user, host, pw):
+
+    with cli_login("{user}@{host}", "-w", "{pw}") as cli:
+        cli.invoke(["download", f'Image:{imageid}',image_dir])
 
 
 def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, target_member=None, ids=None,
