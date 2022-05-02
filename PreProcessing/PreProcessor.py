@@ -1,3 +1,4 @@
+import openslide
 import glob
 import os
 import cv2
@@ -5,7 +6,6 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import utils.OmeroTools
-from wsi_core.WholeSlideImage import WholeSlideImage
 from PIL import Image
 from tqdm import tqdm
 from joblib import delayed, Parallel  # upcoming
@@ -185,6 +185,7 @@ class PreProcessor:
         all_labels = np.concatenate((legend_label, df_export['label'].values + 1), axis=0)
         all_coords = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
 
+        """## Broken for now -- to fix
         heatmap, overlay = WSI_object.visHeatmap(all_labels,
                                                  all_coords,
                                                  vis_level=vis_level_view,
@@ -211,7 +212,7 @@ class PreProcessor:
         os.makedirs(QA_path, exist_ok=True)
         img_pth = os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')
         heatmap_PIL.save(img_pth, 'pdf')
-
+        """
     def tile_membership(self, edge, coords, patch_size, contours_idx_within_ROI, remove_BW, WSI_object, df):
         # Start by assuming that the patch is within the contour, and remove it if it does not meet
         # a set of conditions.
@@ -245,8 +246,7 @@ class PreProcessor:
         # This can be a bit slow as we need to load each patch and assess its colour.
         if remove_BW:
 
-            patch = np.array(
-                WSI_object.wsi.read_region(edge, 0, (patch_size, patch_size)).convert("RGB"))
+            patch = np.array( WSI_object.read_region(edge, 0, (patch_size, patch_size)).convert("RGB"))
             average_colour = np.mean(patch.reshape(patch_size ** 2, 3), axis=0)
             patch_too_white = np.all(average_colour > remove_BW * np.array([255.0, 255.0, 255.0]))
 
@@ -356,12 +356,12 @@ class PreProcessor:
             #  load contours if existing, or process entire WSI
             search_WSI_query = os.path.join(self.svs_path, '**', ID + '.svs')
             svs_filename = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
-            WSI_object = WholeSlideImage(svs_filename)
+            WSI_object = openslide.open_slide(svs_filename)
             if contour_files:
                 df = pd.read_csv(contour_files[idx])
                 df = roi_to_points(df)  # converts ROIs that are not polygons to "Points" for uniform handling.
             else:
-                xmax, ymax = WSI_object.level_dim[0]
+                xmax, ymax = WSI_object.level_dimensions[0]
                 xmin, ymin = 0, 0
                 df = [1]  # dummy placeholder as we have a single contour equal to the entire image.
 

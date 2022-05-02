@@ -14,13 +14,10 @@ import torchvision.models as models
 import numpy as np
 import torch
 from torchinfo import summary
-
-import openslide
 import sys, glob
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
-from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping,ModelSummary
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
 from Model.MixModel import MixModel

@@ -10,8 +10,8 @@ from torchvision.ops import boxes as box_ops
 import numpy as np
 import torch
 import pandas as pd
-from wsi_core.WholeSlideImage import WholeSlideImage
 from Dataloader.DataloaderMitosis import DataGenerator,DataGenerator_Mitosis
+import openslide
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, WSIQuery
 from torch.utils.data import DataLoader
 from torchvision import datasets, models
@@ -24,7 +24,7 @@ import pytorch_lightning as pl
 config_AED = toml.load('Configuration_AED.ini')
 Slide_id = [sys.argv[1]]
 coords_file = LoadFileParameter(Slide_id, config_AED['SVS_Folder'], config_AED['Patches_Folder'])
-wsi_object = WholeSlideImage(config_AED['SVS_Folder'] + '/{}.svs'.format(Slide_id[0]))   
+wsi_object = openslide.open_slide(config_AED['SVS_Folder'] + '/{}.svs'.format(Slide_id[0]))   
 dataset = DataGenerator(coords_file, transforms=T.Compose([T.ToTensor(),]), inference = True)
 
 Encoder = AutoEncoder.load_from_checkpoint(config_AED['Pretrained_AED'],config = config_AED).encoder
@@ -40,10 +40,6 @@ coords_file["labels"] = kmeans.labels_
 scores = np.array(coords_file.labels.to_list())
 scores /= scores.max()
 coords = np.array(coords_file[["coords_x","coords_y"]])
-img = wsi_object.visHeatmap(scores,coords,patch_size=config_AED['dim'],segment=False,thresh=np.median(scores), cmap='jet')
-plt.imshow(img)
-plt.colorbar()
-plt.show()
 
 labels = np.array(coords_file.labels.value_counts().index)
 def show_patch(coords,label,n):
@@ -54,8 +50,8 @@ def show_patch(coords,label,n):
     for i in range(n):
         wsi_path = coords['wsi_path'][i]        
         top_left = (coords['coords_x'][i]  ,coords['coords_y'][i]  )
-        wsi_object = WholeSlideImage(wsi_path)  
-        img = np.array(wsi_object.wsi.read_region(top_left, config_AED['vis_level'], config_AED['dim']).convert("RGB"))
+        wsi_object = openslide.open_slide(wsi_path)  
+        img = np.array(wsi_object.read_region(top_left, config_AED['vis_level'], config_AED['dim']).convert("RGB"))
         axs[i].imshow(img)
         axs[i].get_xaxis().set_visible(False)
         axs[i].get_yaxis().set_visible(False)

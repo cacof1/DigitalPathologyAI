@@ -15,7 +15,6 @@ import sys, glob
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
-from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 #from piqa import SSIM
 from kornia.losses import SSIMLoss

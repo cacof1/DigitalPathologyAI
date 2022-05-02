@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-from wsi_core.WholeSlideImage import WholeSlideImage
+import openslide
 data = []
 def onclick(event):
     counter = np.zeros((4,4))
@@ -31,11 +31,11 @@ file_path = sys.argv[1]
         fig,ax = plt.subplots(figsize=(14,14))
         print(ncoord)
         if(ncoord>5): break
-        wsi_object = WholeSlideImage(sys.argv[2])
+        wsi_object = openslide.open_slide(sys.argv[2])
         vis_level  = 0
-        downsamples = wsi_object.wsi.level_downsamples[vis_level]
+        downsamples = wsi_object.level_downsamples[vis_level]
         patch_size = (256*4,256*4)
-        patch = np.array(wsi_object.wsi.read_region(tuple(coord), vis_level, patch_size))#.convert("RGB"))
+        patch = np.array(wsi_object.read_region(tuple(coord), vis_level, patch_size))#.convert("RGB"))
         coord_old = coord
 
         ## X Lines

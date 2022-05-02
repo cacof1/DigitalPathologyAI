@@ -10,10 +10,10 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import openslide
 from torch import Tensor
 import math
 import pandas as pd
-from wsi_core.WholeSlideImage import WholeSlideImage
 from torch.utils.data import DataLoader
 from torchvision import datasets, models
 import torchvision
@@ -46,8 +46,8 @@ class DataGenerator_Mitosis(torch.utils.data.Dataset):
         dim = (256,256)
        
         wsi_path = self.df['wsi_path']
-        wsi_object = WholeSlideImage(wsi_path)  
-        img = np.array(wsi_object.wsi.read_region(top_left, vis_level, dim).convert("RGB"))
+        wsi_object = openslide.open_slide(wsi_path)  
+        img = np.array(wsi_object.read_region(top_left, vis_level, dim).convert("RGB"))
         try:
             img,H,E = normalizeStaining(img)
         except:
