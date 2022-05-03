@@ -1,3 +1,4 @@
+import openslide
 import glob
 import os
 import cv2
@@ -6,7 +7,6 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import utils.OmeroTools
-from wsi_core.WholeSlideImage import WholeSlideImage
 from PIL import Image
 from tqdm import tqdm
 import torch
@@ -278,38 +278,88 @@ class PreProcessor:
         all_labels = np.concatenate((legend_label, df_export[self.label_name].values + 1), axis=0)
         all_coords = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
 
-        heatmap, overlay = WSI_object.visHeatmap(all_labels,
-                                                 all_coords,
-                                                 vis_level=vis_level_view,
-                                                 patch_size=(patch_size, patch_size),
-                                                 segment=False,
-                                                 cmap=cmap,
-                                                 alpha=0.4,
-                                                 blank_canvas=False,
-                                                 return_overlay=True)
+        # Broken for now - will be fixed in the next update. This will just not display QA maps.
+        # heatmap, overlay = WSI_object.visHeatmap(all_labels,
+        #                                          all_coords,
+        #                                          vis_level=vis_level_view,
+        #                                          patch_size=(patch_size, patch_size),
+        #                                          segment=False,
+        #                                          cmap=cmap,
+        #                                          alpha=0.4,
+        #                                          blank_canvas=False,
+        #                                          return_overlay=True)
+        #
+        # # Draw the contours for each label
+        # heatmap = np.array(heatmap)
+        # indexes_to_plot = np.unique(overlay[overlay > 0])
+        # for ii in range(len(indexes_to_plot)):
+        #     im1 = 255 * (overlay == indexes_to_plot[ii]).astype(np.uint8)
+        #     contours, hierarchy = cv2.findContours(im1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        #     color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels + 1)
+        #
+        #     if len(color_label) > 0:
+        #         col = 255 * cmap.colors[color_label[0][0]]
+        #     else:
+        #         col = [0, 0, 0]  # black contour if you can't find a colour.
+        #
+        #     cv2.drawContours(heatmap, contours, -1, col, 3)
+        #
+        # heatmap_PIL = Image.fromarray(heatmap)
+        # # heatmap_PIL.show()
+        #
+        # # Export image to QA_path to evaluate the quality of the pre-processing.
+        # os.makedirs(QA_path, exist_ok=True)
+        # img_pth = os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')
+        # heatmap_PIL.save(img_pth, 'pdf')
 
-        # Draw the contours for each label
-        heatmap = np.array(heatmap)
-        indexes_to_plot = np.unique(overlay[overlay > 0])
-        for ii in range(len(indexes_to_plot)):
-            im1 = 255 * (overlay == indexes_to_plot[ii]).astype(np.uint8)
-            contours, hierarchy = cv2.findContours(im1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels + 1)
+    def tile_membership(self, edge, coords, patch_size, contours_idx_within_ROI, remove_BW, WSI_object, df):
+        # Start by assuming that the patch is within the contour, and remove it if it does not meet
+        # a set of conditions.
 
-            if len(color_label) > 0:
-                col = 255 * cmap.colors[color_label[0][0]]
-            else:
-                col = [0, 0, 0]  # black contour if you can't find a colour.
+        if isinstance(df, pd.DataFrame):
 
-            cv2.drawContours(heatmap, contours, -1, col, 3)
+            # First: is the patch within the ROI? Test with cv2 for pre-defined contour,
+            # or if no contour then do nothing and use the patch.
+            patch_outside_ROI = cv2.pointPolygonTest(coords,
+                                                     (edge[0] + patch_size / 2,
+                                                      edge[1] + patch_size / 2),
+                                                     measureDist=False) == -1
+            if patch_outside_ROI:
+                return False
 
-        heatmap_PIL = Image.fromarray(heatmap)
-        # heatmap_PIL.show()
+            # Second: verify that the valid patch is not within any of the ROIs identified
+            # as fully inside the current ROI.
+            patch_within_other_ROIs = []
+            for ii in range(len(contours_idx_within_ROI)):
+                cii = contours_idx_within_ROI[ii]
+                object_in_ROI_coords = self.split_ROI_points(df['Points'][cii]).astype(int)
+                patch_within_other_ROIs.append(cv2.pointPolygonTest(object_in_ROI_coords,
+                                                                    (edge[0] + patch_size / 2,
+                                                                     edge[1] + patch_size / 2),
+                                                                    measureDist=False) >= 0)
 
-        # Export image to QA_path to evaluate the quality of the pre-processing.
-        os.makedirs(QA_path, exist_ok=True)
-        img_pth = os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')
-        heatmap_PIL.save(img_pth, 'pdf')
+            if any(patch_within_other_ROIs):
+                return False
+
+        # Another condition: verify if the remove outlier condition is turned on, and apply.
+        # This can be a bit slow as we need to load each patch and assess its colour.
+        if remove_BW:
+
+            patch = np.array( WSI_object.read_region(edge, 0, (patch_size, patch_size)).convert("RGB"))
+            average_colour = np.mean(patch.reshape(patch_size ** 2, 3), axis=0)
+            patch_too_white = np.all(average_colour > remove_BW * np.array([255.0, 255.0, 255.0]))
+
+            if patch_too_white:
+                return False
+            patch_too_dark = np.all(average_colour < remove_BW * np.array([1.0, 1.0, 1.0]))
+
+            if patch_too_dark:
+                return False
+
+            # for debugging/validation purposes: uncomment to plot all patches on top of contours.
+            # plot_contour(edge[0], edge[0] + patch_size, edge[1], edge[1] + patch_size)
+
+        return True
 
     def preprocess_WSI(self):
 
@@ -412,11 +462,13 @@ class PreProcessor:
             #  load contours if existing, or process entire WSI
             search_WSI_query = os.path.join(self.svs_path, '**', ID + '.svs')
             svs_filename = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
-            WSI_object = WholeSlideImage(svs_filename)
+            WSI_object = openslide.open_slide(svs_filename)
             if contour_files:
                 df = pd.read_csv(contour_files[idx])
                 df = roi_to_points(df)  # converts ROIs that are not polygons to "Points" for uniform handling.
             else:
+                xmax, ymax = WSI_object.level_dimensions[0]
+                xmin, ymin = 0, 0
                 df = [1]  # dummy placeholder as we have a single contour equal to the entire image.
 
             # Loop over each contour and extract patches contained within

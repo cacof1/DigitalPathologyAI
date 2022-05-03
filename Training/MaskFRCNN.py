@@ -13,10 +13,8 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import torchvision.models as models
 import numpy as np
 import torch
-import openslide
 import sys, glob
 import torch.nn as nn
-from wsi_core.WholeSlideImage import WholeSlideImage
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping,ModelSummary
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, DataModule, WSIQuery
 from pytorch_lightning.loggers import TensorBoardLogger

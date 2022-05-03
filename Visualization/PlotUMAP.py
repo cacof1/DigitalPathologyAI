@@ -1,9 +1,9 @@
 from Model.AutoEncoder import AutoEncoder, DataGenerator
 from pytorch_lightning import LightningDataModule, LightningModule, Trainer,seed_everything
-from wsi_core.WholeSlideImage import WholeSlideImage
 from torchvision import transforms
 import numpy as np
 import pandas as pd
+import openslide
 import matplotlib.pyplot as plt
 import umap
 import sys, glob
@@ -17,7 +17,7 @@ coords_file = pd.DataFrame()
 for filenb,filename in enumerate(glob.glob(CoordsFolder+"*.h5")):
     coords          = #np.array()
     patient_id      = filename.split("/")[-1][:-3]
-    wsi_file_object      = WholeSlideImage(WSIPath + '{}.svs'.format(patient_id))
+    wsi_file_object      = self.wsi = openslide.open_slide(WSIPath + '{}.svs'.format(patient_id))
     coords_file_temp              = pd.DataFrame(coords,columns=['coords_x','coords_y'])
     coords_file_temp['patient_id'] = patient_id
     wsi_file[patient_id] = wsi_file_object

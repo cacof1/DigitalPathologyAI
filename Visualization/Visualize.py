@@ -5,7 +5,7 @@ Created on Wed Oct 20 08:27:34 2021
 @author: zhuoy
 """
 
-from wsi_core.WholeSlideImage import WholeSlideImage
+import openslide
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
@@ -33,13 +33,14 @@ class Visualize:
         '''
     
         self.df = pd.read_csv(self.filename,index_col=0)
-        self.wsi_object = WholeSlideImage(self.patient_id)
+        self.wsi_object = openslide.open_slide(self.patient_id)
         self.preds = (np.array(self.df["tumour_label"]))*100
         self.coords = np.array(self.df[["coords_x","coords_y"]])
-        
-        heatmap = self.wsi_object.visHeatmap(self.preds, self.coords, vis_level=vis_level, segment=segment)
-        plt.imshow(heatmap)
-        plt.show()
+
+        ## broken, heatmap doesnt belong the wsi_object
+        #heatmap = self.wsi_object.visHeatmap(self.preds, self.coords, vis_level=vis_level, segment=segment)
+        #plt.imshow(heatmap)
+        #plt.show()
         
         return heatmap
     

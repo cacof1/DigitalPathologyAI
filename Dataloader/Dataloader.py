@@ -4,9 +4,9 @@ from torch.utils.data import DataLoader
 import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+import openslide
 import numpy as np
 import torch
-from wsi_core.WholeSlideImage import WholeSlideImage
 import glob
 import os
 from utils import sampling_schemes
@@ -30,13 +30,13 @@ class DataGenerator(torch.utils.data.Dataset):
 
     def __getitem__(self, id):
         # load image
-        wsi_file  = WholeSlideImage(self.coords["wsi_path"].iloc[id])
+        wsi_file  = openslide.open_slide(self.coords["wsi_path"].iloc[id])
 
         data_dict = {}
         for dim in self.dim_list:
             for vis_level in self.vis_list:
                 key = "_".join(map(str,dim))+"_"+str(vis_level)
-                data_dict[key]  = np.array(wsi_file.wsi.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
+                data_dict[key]  = np.array(wsi_file.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
                                                                      vis_level, dim).convert("RGB"))
 
         ## Transform - Data Augmentation

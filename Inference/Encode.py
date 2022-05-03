@@ -11,6 +11,7 @@ import os
 import sys
 import pandas as pd
 import seaborn as sns
+import openslide
 ## Clustering
 from sklearn.cluster import KMeans
 from sklearn.cluster import MiniBatchKMeans
@@ -18,7 +19,6 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 import umap
 
-from wsi_core.WholeSlideImage import WholeSlideImage
 from PIL import Image
 from torchvision import transforms
 import matplotlib.pyplot as plt
@@ -149,7 +149,7 @@ print(coords_file)
 
 coords = np.array(coords_file[["coords_x","coords_y"]])
 print(coords, coords_file["clusters"])
-wsi_file = WholeSlideImage(coords_file["wsi_path"].iloc[0])
+wsi_file = openslide.open_slide(coords_file["wsi_path"].iloc[0])
 img = wsi_file.visHeatmap(coords_file["clusters"],coords,patch_size=(128, 128),segment=False, cmap='jet')
 plt.imshow(img)
 plt.colorbar()
