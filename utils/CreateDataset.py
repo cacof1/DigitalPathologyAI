@@ -3,12 +3,12 @@
 Created on Sat Sep 18 09:55:36 2021
 @author: zhuoy
 """
+import openslide
 import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import cv2
-from wsi_core.WholeSlideImage import WholeSlideImage
 import geojson
 import random
 import pickle
@@ -26,7 +26,7 @@ class AnnotationReader:
     def __init__(self, coords_file, wsi_file,json_file,annotation_type='TumourContour'):
         
         self.coords_file      = pd.read_csv(coords_file)
-        self.wsi_object       = WholeSlideImage(wsi_file)
+        self.wsi_object       = openslide.open_slide(wsi_file)
         
         f = open(json_file,)
         self.annotation       = geojson.load(f)
@@ -48,7 +48,7 @@ class AnnotationReader:
             for n in range(len(self.annotation)):
 
                 points = np.array(self.annotation[n]['geometry']['coordinates'])
-                points_downsamples = np.int32(points/wsi_object.wsi.level_downsamples[self.vis_level])
+                points_downsamples = np.int32(points/wsi_object.level_downsamples[self.vis_level])
                 points_downsamples[:,[0,1]] = points_downsamples[:,[1,0]]
                 cv2.fillPoly(mask, np.array([points_downsamples], dtype=np.int32), (1))  
 
@@ -66,7 +66,7 @@ class AnnotationReader:
                 else:
                     label = 1
         
-                img = np.array(wsi_object.wsi.read_region(tuple(coord_x,coord_y), vis_level, dim).convert("RGB"))
+                img = np.array(wsi_object.read_region(tuple(coord_x,coord_y), vis_level, dim).convert("RGB"))
                 labels.append(label)
                 #masks.append(mask_temp)
     
@@ -104,7 +104,7 @@ class AnnotationReader:
             
             for n in range(len(self.annotation)):
                 points = np.array(self.annotation[n]['geometry']['coordinates']).squeeze()
-                points_downsamples = np.int32(points/wsi_object.wsi.level_downsamples[self.vis_level])
+                points_downsamples = np.int32(points/wsi_object.level_downsamples[self.vis_level])
 
                 if len(points) > 10:                          #Circle for Mitotic Figures
                     x_min1.append(int(min(points[:,0])))

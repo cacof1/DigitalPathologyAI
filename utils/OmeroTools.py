@@ -6,6 +6,7 @@ try:
     from omero.api import RoiOptions
     from omero.rtypes import rstring, rlong, unwrap, rdouble, rint
     from omero.gateway import BlitzGateway
+    from omero.cli import cli_login, CLI
     import omero
 except ImportError:
     print('Unable to load omero modules. Make sure they are installed, otherwise you will not be able to use omero'
@@ -71,6 +72,13 @@ def rgba_to_int(red, green, blue, alpha=255):
     if rgba_int > (2 ** 31 - 1):  # convert to signed 32-bit int
         rgba_int = rgba_int - 2 ** 32
     return rgba_int
+
+
+
+def download_image(imageid, image_dir, user, host, pw):
+
+    with cli_login("{user}@{host}", "-w", "{pw}") as cli:
+        cli.invoke(["download", f'Image:{imageid}',image_dir])
 
 
 def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, target_member=None, ids=None,
@@ -140,19 +148,6 @@ def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, target
                             'OMERO: {}/{} ROIs exported to location: {}'.format(len(ROI_name), str(image.getROICount()),
                                                                                 export_file))
 
-if __name__ == '__main__':
-    # Example of how to use the download_omero_ROIs function:
-    download_path = '/media/mikael/LaCie/sarcoma/contours/test/'
-    host = '128.16.11.124'
-    user = 'msimard'
-    pw = 'msimard'
-    target_member = 'msimard'
-    target_group = 'Sarcoma Classification'
-    ids = ['484759']  # ids should be a list
-
-    download_omero_ROIs(host=host, user=user, pw=pw, target_group=target_group, target_member=target_member, ids=ids,
-                        download_path=download_path)
-
 def list_project_files(host=None, user=None, pw=None, target_group=None, target_member=None):
 
     # Connection to the correct group and identify the correct ID.
@@ -171,3 +166,17 @@ def list_project_files(host=None, user=None, pw=None, target_group=None, target_
                 project_files.append(pth)  #TODO: maybe cat the project / dataset / image name also.
 
     return project_files
+
+if __name__ == '__main__':
+    # Example of how to use the download_omero_ROIs function:
+    download_path = '/media/mikael/LaCie/sarcoma/contours/test/'
+    host = '128.16.11.124'
+    user = 'msimard'
+    pw = 'msimard'
+    target_member = 'msimard'
+    target_group = 'Sarcoma Classification'
+    ids = ['484759']  # ids should be a list
+
+    download_omero_ROIs(host=host, user=user, pw=pw, target_group=target_group, target_member=target_member, ids=ids,
+                        download_path=download_path)
+

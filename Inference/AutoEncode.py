@@ -11,7 +11,6 @@ import os
 import copy
 import sys
 
-from wsi_core.WholeSlideImage import WholeSlideImage
 from PIL import Image
 from torchvision import transforms
 import matplotlib.pyplot as plt

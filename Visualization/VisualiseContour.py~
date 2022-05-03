@@ -2,8 +2,6 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-
-from wsi_core.WholeSlideImage import WholeSlideImage
 import geojson
 
 with open(sys.argv[1]) as f: data = geojson.load(f)
@@ -17,15 +15,15 @@ coord_x, coord_y = map(int,sys.argv[3][:-4].split("/")[-1].split("_"))
 
 ## Full slide with contour
 points = np.array(data[0]['geometry']['coordinates'])
-wsi_object = WholeSlideImage(sys.argv[2])
-wsi_object.wsi.associated_images['label'].save('test.png')
+wsi_object = openslide.open_slide(sys.argv[2])
+wsi_object.associated_images['label'].save('test.png')
 vis_level = 2
-dim = wsi_object.wsi.level_dimensions[vis_level]
-points = np.int32(points/wsi_object.wsi.level_downsamples[vis_level])
-img = np.array(wsi_object.wsi.read_region((0,0),vis_level,dim))
+dim = wsi_object.level_dimensions[vis_level]
+points = np.int32(points/wsi_object.level_downsamples[vis_level])
+img = np.array(wsi_object.read_region((0,0),vis_level,dim))
 mask = np.zeros((dim[1],dim[0]))
 cv2.fillConvexPoly(mask, np.int32(points), (255,255,255,255))
-downsample = int(wsi_object.wsi.level_downsamples[vis_level])
+downsample = int(wsi_object.level_downsamples[vis_level])
 coord_x  /= downsample
 coord_y  /= downsample
 dim_patch = np.round(512/downsample).astype(np.int32)
