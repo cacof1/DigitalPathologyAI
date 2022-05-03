@@ -55,6 +55,7 @@ Note that you could also write the above using the `Fat*` key, which would assig
 
 | Parameter      | Description | Options/restrictions     | Example |
 | :---        |    :----:   |          ---: | ---:|
+| Label_Name        |  Name of the created label in csv file      | String  | Defaults to `'label'`. |
 | Patch_Size        |  Size of each patch.      | Integer  | `256` |
 | Vis        |  Visibility level to analyse. Leave to `0` for optimal results.      | Typically `0` to `3`.  | `0` |
 | Ids        |  List of strings with the WSI ids to be processed.      |  | `['123','456']` |

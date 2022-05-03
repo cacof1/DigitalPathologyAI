@@ -11,27 +11,30 @@ import toml
 from utils import GetInfo
 from torch.utils.data import DataLoader
 from QA.Normalization.Colour import ColourNorm
-
+import numpy as np
+import os
+from sklearn.metrics import confusion_matrix
 
 # Load configuration file and name
-#config = toml.load(sys.argv[1])
-#config = toml.load('trainer_sarcoma_convnet.ini')
-#config = toml.load('trainer_background_convnet.ini')
-config = toml.load('infer_background_convnet.ini')
-#config = toml.load('infer_sarcoma_convnet_SFThigh.ini')
-#config = toml.load('trainer_sarcoma_vit.ini')
-#config = toml.load('trainer_sarcoma_convnext.ini')
+#config = toml.load(sys.argv[1])'"
+config = toml.load('./config_files/trainer_tumour_convnet.ini')
+# config = toml.load('./config_files/infer_tumour_convnet_5classes.ini')
 name = GetInfo.format_model_name(config)
 
-# Set up all logging
-logger = TensorBoardLogger('lightning_logs', name=name)
-lr_monitor = LearningRateMonitor(logging_interval='step')
-checkpoint_callback = ModelCheckpoint(
-    dirpath     =config['MODEL']['Model_Save_Path'],
-    monitor     =config['CHECKPOINT']['Monitor'],
-    filename    =name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' + config['CHECKPOINT']['Monitor'] + ':.2f}',
-    save_top_k  =1,
-    mode        =config['CHECKPOINT']['Mode'])
+# Set up all logging (if training)
+if config['MODEL']['Inference'] is False:
+
+    if 'logger_folder' in config['CHECKPOINT']:
+        logger = TensorBoardLogger(os.path.join('lightning_logs', config['CHECKPOINT']['logger_folder']), name=name)
+    else:
+        logger = TensorBoardLogger('lightning_logs', name=name)
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+    checkpoint_callback = ModelCheckpoint(
+        dirpath     =config['MODEL']['Model_Save_Path'],
+        monitor     =config['CHECKPOINT']['Monitor'],
+        filename    =name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' + config['CHECKPOINT']['Monitor'] + ':.2f}',
+        save_top_k  =1,
+        mode        =config['CHECKPOINT']['Mode'])
 
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
@@ -73,8 +76,6 @@ else:
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-print('Should data be normalised with convnext?!')
-
 # No data augmentation on the validation settens
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
@@ -83,6 +84,7 @@ val_transform = transforms.Compose([
     transforms.Lambda(lambda x: x / 255) if config['QC']['Macenko_Norm'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+
 
 if config['MODEL']['Inference'] is False:  # train
     data = DataModule(
@@ -96,7 +98,8 @@ if config['MODEL']['Inference'] is False:  # train
         dim_list=config['DATA']['Dim'],
         vis_list=config['DATA']['Vis'],
         n_per_sample=config['DATA']['N_Per_Sample'],
-        target=config['DATA']['Target']
+        target=config['DATA']['Target'],
+        sampling_scheme=config['DATA']['Sampling_Scheme']
     )
     config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 
@@ -108,14 +111,28 @@ else:  # prediction does not use train/validation sets, only directly the datalo
                       pin_memory=True)
 
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
-GetInfo.ShowTrainValTestInfo(data, config)
+# From paper: Class-balanced Loss Based on Effective Number of Samples
+if config['MODEL']['Inference']:
+    config['MODEL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
+if config['MODEL']['Inference'] is False:
+    config['MODEL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
+    npatches_per_class = GetInfo.ShowTrainValTestInfo(data, config)
+
+    # The following will be used in an upcoming release to add weights to labels. This will be packaged in a function:
+    # N = sum(npatches_per_class)
+    # beta = (N-1)/N
+    # effective_samples = (1 - beta**npatches_per_class)/(1-beta)
+    # raw_scores = 1 / effective_samples
+    # w = config['DATA']['N_Classes'] * raw_scores / sum(raw_scores)
+    # config['MODEL']['weights'] = torch.tensor(w).float()
+    # print(config['MODEL']['weights'])
 
 # Load model and train/infer
-trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['MODEL']['Max_Epochs'],
-                     precision=config['MODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor], logger=logger)
-
-
 if config['MODEL']['Inference'] is False:  # train
+
+    trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['MODEL']['Max_Epochs'],
+                         precision=config['MODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor],
+                         logger=logger)
 
     if config['MODEL']['Base_Model'].lower() == 'convnet':
         model = ConvNet(config)
@@ -129,6 +146,8 @@ if config['MODEL']['Inference'] is False:  # train
     trainer.fit(model, data)
 
 else:  # infer
+
+    trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['MODEL']['Precision'])
 
     if config['MODEL']['Base_Model'].lower() == 'convnet':
         model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
@@ -144,6 +163,7 @@ else:  # infer
     predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))
 
     for i in range(predicted_classes_prob.shape[1]):
+        print('Adding the column ' + '"prob_' + config['DATA']['Target'] + str(i) + '"...')
         SaveFileParameter(coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
                           'prob_' + config['DATA']['Target'] + str(i))
 

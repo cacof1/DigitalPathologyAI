@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 # The forward() method of each class is used as the transform.
 
 class Macenko(nn.Module):
-    # Maceko colour normalisation. Takes as an input a torch tensor normalised between 0 and 1
+    # Macenko colour normalisation. Takes as an input a torch tensor that goes from 0 to 255
     # of size (C, H, W) and outputs a colour-normalised array of the same size (C, H, W).
     # Inspired by: https://github.com/EIDOSlab/torchstain/blob/main/torchstain/normalizers/torch_macenko_normalizer.py
 
@@ -106,14 +106,14 @@ class Macenko(nn.Module):
 
     def normalize(self, img, stains=True):
         # Input:
-        # img: tensor of size C x H x W
+        # img: tensor of size C x H x W, 0 to 255 intensity
         # Io: (optional) transmitted light intensity
         # alpha: percentile
         # beta: transparency threshold
         # stains: if true, returns H&E components
 
         #Output:
-        # I_norm: normalised image
+        # I_norm: colour normalised image, 0 to 255 intensity
         # H: hematoxylin image
         # E: eosin image
 

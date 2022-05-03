@@ -12,3 +12,4 @@ Inference/wsi_core/
 /Training/config_files/
 *.pyc
 *.pyc
+PreProcessing/Preprocess.py
