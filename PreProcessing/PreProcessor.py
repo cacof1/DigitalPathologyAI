@@ -1,6 +1,7 @@
 import glob
 import os
 import cv2
+import sys
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -8,12 +9,17 @@ import utils.OmeroTools
 from wsi_core.WholeSlideImage import WholeSlideImage
 from PIL import Image
 from tqdm import tqdm
-from joblib import delayed, Parallel  # upcoming
-import multiprocessing as mp  # upcoming
+import torch
+
+sys.path.append('../')
+from QA.Normalization.Colour import ColourNorm
+from mpire import WorkerPool
+import toml
 
 
 def ccw(A, B, C):
     return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+
 
 def plot_contour(xmin, xmax, ymin, ymax, colour='k'):
     plt.plot([xmin, xmax], [ymin, ymin], '-' + colour)
@@ -21,8 +27,8 @@ def plot_contour(xmin, xmax, ymin, ymax, colour='k'):
     plt.plot([xmin, xmin], [ymin, ymax], '-' + colour)
     plt.plot([xmax, xmax], [ymin, ymax], '-' + colour)
 
-def roi_to_points(df):
 
+def roi_to_points(df):
     # The correct type is polygon.
 
     for i in range(len(df)):
@@ -39,6 +45,83 @@ def roi_to_points(df):
 
     return df
 
+
+def split_ROI_points(coords_string):
+    coords = np.array([[float(coord_string.split(',')[0]), float(coord_string.split(',')[1])] for coord_string in
+                       coords_string.split(' ')])
+    return coords
+
+
+def lims_to_vec(xmin=0, xmax=0, ymin=0, ymax=0, patch_size=0):
+    # Create an array containing all relevant tile edges
+    edges_x = np.arange(xmin, xmax, patch_size)
+    edges_y = np.arange(ymin, ymax, patch_size)
+    EX, EY = np.meshgrid(edges_x, edges_y)
+    edges_to_test = np.column_stack((EX.flatten(), EY.flatten()))
+    return edges_to_test
+
+
+# Load a Macenko normaliser
+colour_normaliser = ColourNorm.Macenko(saved_fit_file=config['DATA']['Colour_Norm_File'])
+
+
+def tile_membership(dataset, edge):
+    # dataset is a tuple: (coords, patch_size, contours_idx_within_ROI, remove_BG, WSI_object, df). This allows use
+    # with MPIRE for multiprocessing, which provides a modest speedup. Unpack:
+    coords = dataset[0]
+    patch_size = dataset[1]
+    contours_idx_within_ROI = dataset[2]
+    remove_BG = dataset[3]
+    WSI_object = dataset[4]
+    df = dataset[5]
+
+    # Start by assuming that the patch is within the contour, and remove it if it does not meet
+    # a set of conditions.
+
+    if isinstance(df, pd.DataFrame):
+
+        # First: is the patch within the ROI? Test with cv2 for pre-defined contour,
+        # or if no contour then do nothing and use the patch.
+        patch_outside_ROI = cv2.pointPolygonTest(coords,
+                                                 (edge[0] + patch_size / 2,
+                                                  edge[1] + patch_size / 2),
+                                                 measureDist=False) == -1
+        if patch_outside_ROI:
+            return False
+
+        # Second: verify that the valid patch is not within any of the ROIs identified
+        # as fully inside the current ROI.
+        patch_within_other_ROIs = []
+        for ii in range(len(contours_idx_within_ROI)):
+            cii = contours_idx_within_ROI[ii]
+            object_in_ROI_coords = split_ROI_points(df['Points'][cii]).astype(int)
+            patch_within_other_ROIs.append(cv2.pointPolygonTest(object_in_ROI_coords,
+                                                                (edge[0] + patch_size / 2,
+                                                                 edge[1] + patch_size / 2),
+                                                                measureDist=False) >= 0)
+
+        if any(patch_within_other_ROIs):
+            return False
+
+    # Third condition: verify if the remove background condition is turned on, and apply.
+    # This is the code's main bottleneck as we need to load each patch, colour-normalise it, and assess its colour.
+    if remove_BG:
+
+        patch = np.array(WSI_object.wsi.read_region(edge, 0, (patch_size, patch_size)).convert("RGB"))
+        img_norm, _, _ = colour_normaliser.normalize(torch.tensor(patch).permute(2, 0, 1), stains=False)
+        img_norm = img_norm.numpy()
+        patch_norm_gray = img_norm[:, :, 0] * 0.2989 + img_norm[:, :, 1] * 0.5870 + img_norm[:, :, 2] * 0.1140
+        background_fraction = np.sum(patch_norm_gray > remove_BG * 255) / np.prod(patch_norm_gray.shape)
+
+        if background_fraction > 0.5:
+            return False
+
+        # for debugging/validation purposes: uncomment to plot all patches on top of contours.
+        # plot_contour(edge[0], edge[0] + patch_size, edge[1], edge[1] + patch_size)
+
+    return True
+
+
 class PreProcessor:
 
     def __init__(self, config):
@@ -51,6 +134,7 @@ class PreProcessor:
         # patch_path         : if using contours, folder where images of the processed WSI will be saved for QA.
         # svs_path           : parent path of all svs files. Some files can be located within subfolders of svs_path.
         # ids                : list of ids to process. If empty, will do all slices found recursively in "svs_path".
+        # label_name         : string with the name of the label to be created. Defaults to "label".
         # -------------------------------- Optional -------------------------------------
         # contour_path       : string where contours are located or will be located, depending on contour_type below.
         #                      If empty, no contours will be used and the .csv will be generated using all tiles.
@@ -60,14 +144,23 @@ class PreProcessor:
         #                      See config file or wiki for more details.
         # omero_login        : dict with fields required to run utils.OmeroTools.download_omero_ROIs.
         #                      Used if contour_type=='omero'.
-        # remove_BW          : if set to a scalar value, this will remove, for each contour, all patches
-        #                      whose average colour is remove_BW *[0, 0, 0] or remove_BW * [255, 255, 255];
-        #                      in other words, patches that are almost all white or black are removed from the analysis,
-        #                      as they provide no relevant information.
-        # remove_BW_contours : a list of contours on which to apply remove_BW defined above. By default, the procedure
+        # remove_BG          : if set to a scalar value, this will remove, for each contour, all patches
+        #                      whose average colour is remove_BG * [255, 255, 255].
+        # remove_BG_contours : a list of contours on which to apply remove_BG defined above. By default, the procedure
         #                      is applied to all contours.
 
         # Assign default values
+
+        if 'Label_Name' in config['DATA']:
+            self.label_name = config['DATA']['Label_Name']
+        else:
+            self.label_name = 'label'
+
+        if 'Colour_Norm_File' in config['DATA']:
+            self.colour_normaliser = ColourNorm.Macenko(saved_fit_file=config['DATA']['Colour_Norm_File'])
+            self.colour_norm_file = config['DATA']['Colour_Norm_File']
+        else:
+            self.colour_norm_file = None
 
         if 'Vis' in config['DATA']:
             self.vis = config['DATA']['Vis']
@@ -82,7 +175,7 @@ class PreProcessor:
         if 'Type' in config['CONTOURS']:
             self.contour_type = config['CONTOURS']['Type']
         else:
-            self.contour_type = 'local'
+            self.contour_type = ''
 
         if 'Patch' in config['PATHS']:
             self.patch_path = config['PATHS']['Patch']
@@ -114,15 +207,20 @@ class PreProcessor:
         else:
             self.specific_contours = False
 
-        if 'Remove_BW' in config['CONTOURS']:
-            self.remove_BW = config['CONTOURS']['Remove_BW']
+        if 'Remove_Contours' in config['CONTOURS']:
+            self.remove_contours = [cont.lower() for cont in config['CONTOURS']['Remove_Contours']]
         else:
-            self.remove_BW = False
+            self.remove_contours = ['']
 
-        if 'Remove_BW_Contours' in config['CONTOURS']:
-            self.remove_BW_contours = config['CONTOURS']['Remove_BW_Contours']
+        if 'Remove_BG' in config['CONTOURS']:
+            self.remove_BG = config['CONTOURS']['Remove_BG']
         else:
-            self.remove_BW_contours = False
+            self.remove_BG = False
+
+        if 'Remove_BG_Contours' in config['CONTOURS']:
+            self.remove_BG_contours = [item.lower() for item in config['CONTOURS']['Remove_BG_Contours']]
+        else:
+            self.remove_BG_contours = ''
 
         if 'Contour_Mapping' in config['CONTOURS']:
             self.contour_mapping = config['CONTOURS']['Contour_Mapping']
@@ -160,13 +258,8 @@ class PreProcessor:
 
         return False
 
-    def split_ROI_points(self, coords_string):
-        coords = np.array([[float(coord_string.split(',')[0]), float(coord_string.split(',')[1])] for coord_string in
-                           coords_string.split(' ')])
-        return coords
-
     def create_QA_overlay(self, df_export, WSI_object, patch_size, QA_path, ID, all_possible_labels):
-        vis_level_view = 3
+        vis_level_view = len(WSI_object.level_dim) - 1  # always the lowest res vis level
         N_classes = len(all_possible_labels)
 
         if N_classes <= 10:
@@ -182,7 +275,7 @@ class PreProcessor:
         # For visual aide: show all colors in the bottom left corner.
         legend_coords = np.array([np.arange(0, N_classes * patch_size, patch_size), np.zeros(N_classes)]).T
         legend_label = all_possible_labels
-        all_labels = np.concatenate((legend_label, df_export['label'].values + 1), axis=0)
+        all_labels = np.concatenate((legend_label, df_export[self.label_name].values + 1), axis=0)
         all_coords = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
 
         heatmap, overlay = WSI_object.visHeatmap(all_labels,
@@ -201,66 +294,22 @@ class PreProcessor:
         for ii in range(len(indexes_to_plot)):
             im1 = 255 * (overlay == indexes_to_plot[ii]).astype(np.uint8)
             contours, hierarchy = cv2.findContours(im1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels + 1)[0][0]
-            cv2.drawContours(heatmap, contours, -1, 255 * cmap.colors[color_label], 3)
+            color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels + 1)
+
+            if len(color_label) > 0:
+                col = 255 * cmap.colors[color_label[0][0]]
+            else:
+                col = [0, 0, 0]  # black contour if you can't find a colour.
+
+            cv2.drawContours(heatmap, contours, -1, col, 3)
 
         heatmap_PIL = Image.fromarray(heatmap)
-        heatmap_PIL.show()
+        # heatmap_PIL.show()
 
         # Export image to QA_path to evaluate the quality of the pre-processing.
         os.makedirs(QA_path, exist_ok=True)
         img_pth = os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')
         heatmap_PIL.save(img_pth, 'pdf')
-
-    def tile_membership(self, edge, coords, patch_size, contours_idx_within_ROI, remove_BW, WSI_object, df):
-        # Start by assuming that the patch is within the contour, and remove it if it does not meet
-        # a set of conditions.
-
-        if isinstance(df, pd.DataFrame):
-
-            # First: is the patch within the ROI? Test with cv2 for pre-defined contour,
-            # or if no contour then do nothing and use the patch.
-            patch_outside_ROI = cv2.pointPolygonTest(coords,
-                                                     (edge[0] + patch_size / 2,
-                                                      edge[1] + patch_size / 2),
-                                                     measureDist=False) == -1
-            if patch_outside_ROI:
-                return False
-
-            # Second: verify that the valid patch is not within any of the ROIs identified
-            # as fully inside the current ROI.
-            patch_within_other_ROIs = []
-            for ii in range(len(contours_idx_within_ROI)):
-                cii = contours_idx_within_ROI[ii]
-                object_in_ROI_coords = self.split_ROI_points(df['Points'][cii]).astype(int)
-                patch_within_other_ROIs.append(cv2.pointPolygonTest(object_in_ROI_coords,
-                                                                    (edge[0] + patch_size / 2,
-                                                                     edge[1] + patch_size / 2),
-                                                                    measureDist=False) >= 0)
-
-            if any(patch_within_other_ROIs):
-                return False
-
-        # Another condition: verify if the remove outlier condition is turned on, and apply.
-        # This can be a bit slow as we need to load each patch and assess its colour.
-        if remove_BW:
-
-            patch = np.array(
-                WSI_object.wsi.read_region(edge, 0, (patch_size, patch_size)).convert("RGB"))
-            average_colour = np.mean(patch.reshape(patch_size ** 2, 3), axis=0)
-            patch_too_white = np.all(average_colour > remove_BW * np.array([255.0, 255.0, 255.0]))
-
-            if patch_too_white:
-                return False
-            patch_too_dark = np.all(average_colour < remove_BW * np.array([1.0, 1.0, 1.0]))
-
-            if patch_too_dark:
-                return False
-
-            # for debugging/validation purposes: uncomment to plot all patches on top of contours.
-            # plot_contour(edge[0], edge[0] + patch_size, edge[1], edge[1] + patch_size)
-
-        return True
 
     def preprocess_WSI(self):
 
@@ -290,13 +339,20 @@ class PreProcessor:
 
             for name in df.Text.unique():
 
-                if self.specific_contours:
-                    if name in self.specific_contours:
-                        contour_names.append(name)
-                else:
-                    contour_names.append(name)
+                if all([excluded_contour.lower() not in name.lower() for excluded_contour in self.remove_contours]):
+
+                    if self.specific_contours:
+                        if name in self.specific_contours:
+                            contour_names.append(name.lower())
+                    else:
+                        contour_names.append(name.lower())
 
         unique_contour_names = list(set(contour_names))
+
+        print('-----------------------------')
+        print('List of all contours:')
+        print(unique_contour_names)
+        print('-----------------------------')
 
         # contour_names gives the name of all existing contours. In some cases, you might want to group some contours
         # together, for instance all artifacts together, all fat [in] or [out] together, etc. We create a mapping
@@ -361,19 +417,30 @@ class PreProcessor:
                 df = pd.read_csv(contour_files[idx])
                 df = roi_to_points(df)  # converts ROIs that are not polygons to "Points" for uniform handling.
             else:
-                xmax, ymax = WSI_object.level_dim[0]
-                xmin, ymin = 0, 0
                 df = [1]  # dummy placeholder as we have a single contour equal to the entire image.
 
             # Loop over each contour and extract patches contained within
             for i in range(len(df)):
 
-                ROI_name = df['Text'][i]
+                if isinstance(df, pd.DataFrame):
+                    ROI_name = df['Text'][i].lower()
+                else:
+                    ROI_name = 'entire_wsi'
 
                 print('Processing ROI "{}" ({}/{}) of ID "{}": '.format(ROI_name, str(i + 1), str(len(df)), str(ID)),
                       end='')
 
-                if ROI_name not in Full_Contour_Mapping['contour_name']:
+                if ROI_name == 'entire_wsi':
+
+                    print('Creating patches for entire image, processing.')
+
+                    xmax, ymax = WSI_object.level_dim[0]
+                    edges_to_test = lims_to_vec(xmin=0, xmax=xmax, ymin=0, ymax=ymax, patch_size=self.patch_size)
+                    coord_x.append(edges_to_test[:, 0])
+                    coord_y.append(edges_to_test[:, 1])
+                    label.append(np.ones(len(edges_to_test), dtype=int) * -1)  # should only be a single value.
+
+                elif ROI_name not in Full_Contour_Mapping['contour_name']:
 
                     print('ROI not within selected contours, skipping.')
 
@@ -382,7 +449,7 @@ class PreProcessor:
                     print('Found contours, processing.')
 
                     if isinstance(df, pd.DataFrame):
-                        coords = self.split_ROI_points(df['Points'][i]).astype(int)
+                        coords = split_ROI_points(df['Points'][i]).astype(int)
                         contour_label = [l for s, l in
                                          zip(Full_Contour_Mapping['contour_name'], Full_Contour_Mapping['contour_id'])
                                          if
@@ -411,7 +478,7 @@ class PreProcessor:
                     other_ROIs_index = np.setdiff1d(np.arange(len(df)), i)
                     contours_idx_within_ROI = []
                     for jj in range(len(other_ROIs_index)):
-                        test_coords = self.split_ROI_points(df['Points'][other_ROIs_index[jj]]).astype(int)
+                        test_coords = split_ROI_points(df['Points'][other_ROIs_index[jj]]).astype(int)
                         centroid = np.mean(test_coords, axis=0)
                         left_to_centroid = np.vstack([np.array((xmin, centroid[1])), centroid])
                         centroid_to_right = np.vstack([np.array((xmax, centroid[1])), centroid])
@@ -429,35 +496,43 @@ class PreProcessor:
                             contours_idx_within_ROI.append(other_ROIs_index[jj])
 
                     # --------------------------------------------------------------------------------------------
-                    # Create an array containing all relevant tile edges
-                    edges_x = np.arange(xmin, xmax, self.patch_size)
-                    edges_y = np.arange(ymin, ymax, self.patch_size)
-                    EX, EY = np.meshgrid(edges_x, edges_y)
-                    edges_to_test = np.column_stack((EX.flatten(), EY.flatten()))
+                    edges_to_test = lims_to_vec(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, patch_size=self.patch_size)
 
-                    # if removing BW, validate if the current ROI should be processed
-                    if ROI_name in self.remove_BW_contours:
-                        remove_BW_current_ROI = self.remove_BW
+                    # Remove BG in concerned ROIs
+                    remove_BG_cond = [ROI_name in remove_bg_contour.lower() for remove_bg_contour in
+                                      self.remove_BG_contours]
+                    if any(remove_BG_cond):
+                        remove_BG = self.remove_BG
                     else:
-                        remove_BW_current_ROI = False
+                        remove_BG = None
 
-                    # Loop over all tiles and see if they are members of the current ROI
-                    membership = np.full(len(edges_to_test), False)
-                    for ei in tqdm(range(len(edges_to_test))):
-                        membership[ei] = self.tile_membership(edges_to_test[ei, :], coords, self.patch_size,
-                                                              contours_idx_within_ROI, remove_BW_current_ROI,
-                                                              WSI_object, df)
+                    # Loop over all tiles and see if they are members of the current ROI. Do in // if you have many
+                    # tiles, otherwise the overhead cost is not worth it
+                    dataset = (coords, self.patch_size, contours_idx_within_ROI, remove_BG, WSI_object, df)
+
+                    if len(edges_to_test) > 5000:
+
+                        with WorkerPool(n_jobs=6, start_method='fork') as pool:
+                            pool.set_shared_objects(dataset)
+                            results = pool.map(tile_membership, list(edges_to_test), progress_bar=True)
+
+                        membership = np.asarray(results)
+
+                    else:
+                        membership = np.full(len(edges_to_test), False)
+                        for ei in tqdm(range(len(edges_to_test))):
+                            membership[ei] = tile_membership(dataset, edges_to_test[ei, :])
 
                     coord_x.append(edges_to_test[membership, 0])
                     coord_y.append(edges_to_test[membership, 1])
                     label.append(
-                        np.ones(np.sum(membership), dtype=int) * contour_label[0])  # should only be a single value.
+                        np.ones(np.sum(membership), dtype=int) * contour_label[0])  # should only be a unique value.
 
             # Once looped over all ROIs for a given index, export as csv
             coord_x = [item for sublist in coord_x for item in sublist]
             coord_y = [item for sublist in coord_y for item in sublist]
             label = [item for sublist in label for item in sublist]
-            df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y, 'label': label})
+            df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y, self.label_name: label})
             df_export.to_csv(patch_csv_export_filename)
             print('exported at: {}'.format(patch_csv_export_filename))
 
@@ -477,3 +552,9 @@ class PreProcessor:
         print('Mapping exported at: {}'.format(out_mapping))
 
         return
+
+
+if __name__ == "__main__":
+    config = toml.load('./config_files/tumour_identification_training_ubuntu.ini')
+    preprocess = PreProcessor(config)
+    preprocess.preprocess_WSI()

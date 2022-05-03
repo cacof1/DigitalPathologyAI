@@ -6,34 +6,36 @@ import ColourNorm
 import numpy as np
 from wsi_core.WholeSlideImage import WholeSlideImage
 from matplotlib import pyplot as plt
+import os
+import glob
 
-id_test = '492006'
+id_test = '492457'
 id_train = '484813'
-#id_train = '493199'
-#id_test = '493199'
-bp='/Users/mikael/Documents/sarcoma/'
 bp = '/media/mikael/LaCie/sarcoma/'
 
-# Params of Macenko
+# HPs of Macenko
 alpha = 1
 beta = 0.1
 Io = 250
+export = 0
 
 # for viewing
 vis = 0
-start = (0, 0)
 
-patient_id_train = bp + id_train + '.svs'
+search_WSI_query = os.path.join(bp, '**', id_train + '.svs')
+patient_id_train = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
 wsi_object_train = WholeSlideImage(patient_id_train)
 start = (int(wsi_object_train.level_dim[vis][0]/3), int(wsi_object_train.level_dim[vis][1]/3))
 #size = wsi_object_train.level_dim[vis]
 size = (2000, 2000)
 img_train = np.array(wsi_object_train.wsi.read_region(start, vis, size).convert("RGB"))
 
-patient_id_test = bp + id_test + '.svs'
+search_WSI_query = os.path.join(bp, '**', id_test + '.svs')
+patient_id_test = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
 wsi_object_test = WholeSlideImage(patient_id_test)
 start = (int(wsi_object_test.level_dim[vis][0]/3), int(wsi_object_test.level_dim[vis][1]/3))
 size = (256, 256)
+#size = wsi_object_test.level_dim[vis]
 img_test = np.array(wsi_object_test.wsi.read_region(start, vis, size).convert("RGB"))
 
 # Train
@@ -53,8 +55,10 @@ plt.subplot(2, 3, 2)
 plt.imshow(img_test)
 plt.title('Original test image')
 
+
 plt.subplot(2, 3, 3)
-plt.imshow(img_test_norm.cpu().detach().numpy())
+norm_test_img = img_test_norm.cpu().detach().numpy()
+plt.imshow(norm_test_img)
 plt.title('Normalized test image')
 
 plt.subplot(2, 3, 4)
@@ -66,15 +70,16 @@ plt.imshow(E)
 plt.title('Eosin channel')
 plt.show()
 
-# Export the current model!
+# Export the current colour calibration.
+if export:
 
-filename = './trained/' + id_train + '_vis' + str(vis) + '_HERef.pt'
-HEref = MacenkoNormaliser.HERef
-maxCRef = MacenkoNormaliser.maxCRef
-alpha = MacenkoNormaliser.alpha
-beta = MacenkoNormaliser.beta
-Io = MacenkoNormaliser.Io
-torch.save({'HERef': HEref, 'maxCRef': maxCRef, 'alpha': alpha, 'beta': beta, 'Io': Io}, filename)
+    filename = './trained/' + id_train + '_vis' + str(vis) + '_HERef.pt'
+    HEref = MacenkoNormaliser.HERef
+    maxCRef = MacenkoNormaliser.maxCRef
+    alpha = MacenkoNormaliser.alpha
+    beta = MacenkoNormaliser.beta
+    Io = MacenkoNormaliser.Io
+    torch.save({'HERef': HEref, 'maxCRef': maxCRef, 'alpha': alpha, 'beta': beta, 'Io': Io}, filename)
 
 ## Sanity check
 #MacenkoNormaliser2 = ColourNorm.Macenko(saved_fit_file=filename)
@@ -84,39 +89,39 @@ torch.save({'HERef': HEref, 'maxCRef': maxCRef, 'alpha': alpha, 'beta': beta, 'I
 
 
 ## Classify Zhuoyan's datasets
-he = np.load('./test_tiles/h_e_tile.npy')
-phh3 = np.load('./test_tiles/phh3_tile.npy')
-
-MacenkoNorm = ColourNorm.Macenko(saved_fit_file=filename)
-
-tile_test = torch.from_numpy(he).permute(2, 0, 1)  # torch of size C x H x W.
-tile_test_norm, Htile, Etile = MacenkoNorm.normalize(tile_test, stains=True)
-
-plt.figure()
-
-plt.subplot(2, 3, 1)
-plt.imshow(he)
-plt.title('Base image')
-
-plt.subplot(2, 3, 2)
-plt.imshow(tile_test_norm)
-plt.title('Normalized image')
-
-plt.subplot(2, 3, 3)
-plt.imshow(phh3)
-plt.title('PHH3 image')
-
-plt.subplot(2, 3, 4)
-plt.imshow(Htile)
-plt.title('Haematoxylin channel')
-
-plt.subplot(2, 3, 5)
-plt.imshow(Etile)
-plt.title('Eosin channel')
-plt.show()
-
-
-
-
-
-
+# he = np.load('./test_tiles/h_e_tile.npy')
+# phh3 = np.load('./test_tiles/phh3_tile.npy')
+#
+# MacenkoNorm = ColourNorm.Macenko(saved_fit_file=filename)
+#
+# tile_test = torch.from_numpy(he).permute(2, 0, 1)  # torch of size C x H x W.
+# tile_test_norm, Htile, Etile = MacenkoNorm.normalize(tile_test, stains=True)
+#
+# plt.figure()
+#
+# plt.subplot(2, 3, 1)
+# plt.imshow(he)
+# plt.title('Base image')
+#
+# plt.subplot(2, 3, 2)
+# plt.imshow(tile_test_norm)
+# plt.title('Normalized image')
+#
+# plt.subplot(2, 3, 3)
+# plt.imshow(phh3)
+# plt.title('PHH3 image')
+#
+# plt.subplot(2, 3, 4)
+# plt.imshow(Htile)
+# plt.title('Haematoxylin channel')
+#
+# plt.subplot(2, 3, 5)
+# plt.imshow(Etile)
+# plt.title('Eosin channel')
+# plt.show()
+#
+#
+#
+#
+#
+#

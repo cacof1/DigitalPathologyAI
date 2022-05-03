@@ -9,6 +9,7 @@ import torch
 from wsi_core.WholeSlideImage import WholeSlideImage
 import glob
 import os
+from utils import sampling_schemes
 
 class DataGenerator(torch.utils.data.Dataset):
 
@@ -43,7 +44,7 @@ class DataGenerator(torch.utils.data.Dataset):
         if self.transform: data_dict = {key: self.transform(value) for (key, value) in data_dict.items()}
         if (self.inference): return data_dict
 
-        else: 
+        else:
             label = int(round(self.coords[self.target].iloc[id]))
             if self.target_transform:
                 label = self.target_transform(label)
@@ -52,30 +53,31 @@ class DataGenerator(torch.utils.data.Dataset):
 
 class DataModule(LightningDataModule):
 
-    def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample=5000,
-                 train_size=0.7, val_size=0.3, **kwargs):
+    def __init__(self, coords_file, train_transform=None, val_transform=None, batch_size=8, n_per_sample=np.Inf,
+                 train_size=0.7, val_size=0.3, target=None, sampling_scheme='wsi', **kwargs):
         super().__init__()
         self.batch_size = batch_size
-        #coords_file = coords_file.groupby("file_id").sample(n=n_per_sample, replace=False)
 
+        if sampling_scheme.lower() == 'wsi':
+            coords_file_sampled = sampling_schemes.sample_N_per_WSI(coords_file, n_per_sample=n_per_sample)
+            svi = np.unique(coords_file_sampled.file_id)
+            np.random.shuffle(svi)
+            train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size)
+            coords_file_train = coords_file_sampled[coords_file.file_id.isin(train_idx)]
+            coords_file_valid = coords_file_sampled[coords_file.file_id.isin(val_idx)]
 
-        value_counts = coords_file.file_id.value_counts()
-        fn_for_sampling = value_counts[value_counts > n_per_sample].index
+        elif sampling_scheme.lower() == 'patch':
+            coords_file_sampled = sampling_schemes.sample_N_per_WSI(coords_file, n_per_sample=n_per_sample)
+            coords_file_train, coords_file_valid = train_test_split(coords_file_sampled,
+                                                                    test_size=val_size, train_size=train_size)
 
-        df1 = coords_file[coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(n=n_per_sample, replace=False)
+        else:  # assume custom split
+            sampler = getattr(sampling_schemes, sampling_scheme)
+            coords_file_train, coords_file_valid = sampler(coords_file, target=target, n_per_sample=n_per_sample,
+                                                           train_size=train_size, test_size=val_size)
 
-        if fn_for_sampling.shape != value_counts.shape:  # if some datasets have less than n_per_sample
-            df2 = coords_file[~coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(frac=1)
-            coords_file = pd.concat([df1, df2])
-        else:
-            coords_file = df1
-
-        svi = np.unique(coords_file.file_id)
-        np.random.shuffle(svi)
-
-        train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size)
-        self.train_data = DataGenerator(coords_file[coords_file.file_id.isin(train_idx)], transform=train_transform, **kwargs)
-        self.val_data   = DataGenerator(coords_file[coords_file.file_id.isin(val_idx)],   transform=val_transform, **kwargs)
+        self.train_data = DataGenerator(coords_file_train, transform=train_transform, target=target, **kwargs)
+        self.val_data   = DataGenerator(coords_file_valid,   transform=val_transform, target=target, **kwargs)
 
     def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
     def val_dataloader(self):   return DataLoader(self.val_data,   batch_size=self.batch_size, num_workers=10, pin_memory=True)
@@ -110,7 +112,7 @@ def LoadFileParameter(ids, svs_folder, patch_folder):
             if filenb == 0:
                 coords_file = coords
             else:
-                coords_file = coords_file.append(coords)
+                coords_file = pd.concat([coords_file, coords])
         except:
             print('Unable to find patch data for file {}.csv'.format(file_id))
             continue
