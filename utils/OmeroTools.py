@@ -180,3 +180,23 @@ if __name__ == '__main__':
     download_omero_ROIs(host=host, user=user, pw=pw, target_group=target_group, target_member=target_member, ids=ids,
                         download_path=download_path)
 
+    # Example of how to use the upload_omero_polygon_ROIs function:
+
+    # Input parameters
+    host = '128.16.11.124'
+    user = 'msimard'
+    pw = 'msimard'
+    n_contours_to_draw = 5
+    export_ROI = False
+    contour_folder = '/home/mikael/Dropbox/M/PostDoc/UCL/datasets/Digital_Pathology/zhuoyan/to_omero/contours/matlab_coordinates/'
+    target_IDs = ['210000003', '210002933']
+    target_contours = ['AEDClustering_210000003_C4_tumour_binary_matlab_contours.mat',
+                       'AEDClustering_210002933_C4_tumour_binary_matlab_contours.mat']
+    target_member = 'zhuoyanshen'
+    target_group = 'Mitosis Detection'
+    contour_prefix_on_omero = "Autoencoder"
+
+    upload_omero_polygon_ROIs(host=host, user=user, pw=pw, n_contours_to_draw=n_contours_to_draw, export_ROI=export_ROI,
+                              contour_folder=contour_folder, target_IDs=target_IDs, target_contours=target_contours,
+                              target_member=target_member, target_group=target_group,
+                              contour_prefix_on_omero=contour_prefix_on_omero)

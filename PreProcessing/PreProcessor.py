@@ -278,39 +278,35 @@ class PreProcessor:
         all_labels = np.concatenate((legend_label, df_export[self.label_name].values + 1), axis=0)
         all_coords = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
 
-        # Broken for now - will be fixed in the next update. This will just not display QA maps.
-        # heatmap, overlay = WSI_object.visHeatmap(all_labels,
-        #                                          all_coords,
-        #                                          vis_level=vis_level_view,
-        #                                          patch_size=(patch_size, patch_size),
-        #                                          segment=False,
-        #                                          cmap=cmap,
-        #                                          alpha=0.4,
-        #                                          blank_canvas=False,
-        #                                          return_overlay=True)
-        #
-        # # Draw the contours for each label
-        # heatmap = np.array(heatmap)
-        # indexes_to_plot = np.unique(overlay[overlay > 0])
-        # for ii in range(len(indexes_to_plot)):
-        #     im1 = 255 * (overlay == indexes_to_plot[ii]).astype(np.uint8)
-        #     contours, hierarchy = cv2.findContours(im1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        #     color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels + 1)
-        #
-        #     if len(color_label) > 0:
-        #         col = 255 * cmap.colors[color_label[0][0]]
-        #     else:
-        #         col = [0, 0, 0]  # black contour if you can't find a colour.
-        #
-        #     cv2.drawContours(heatmap, contours, -1, col, 3)
-        #
-        # heatmap_PIL = Image.fromarray(heatmap)
-        # # heatmap_PIL.show()
-        #
-        # # Export image to QA_path to evaluate the quality of the pre-processing.
-        # os.makedirs(QA_path, exist_ok=True)
-        # img_pth = os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')
-        # heatmap_PIL.save(img_pth, 'pdf')
+
+        """## Broken for now -- to fix
+        heatmap, overlay = WSI_object.visHeatmap(all_labels,
+                                                 all_coords,
+                                                 vis_level=vis_level_view,
+                                                 patch_size=(patch_size, patch_size),
+                                                 segment=False,
+                                                 cmap=cmap,
+                                                 alpha=0.4,
+                                                 blank_canvas=False,
+                                                 return_overlay=True)
+
+        # Draw the contours for each label
+        heatmap = np.array(heatmap)
+        indexes_to_plot = np.unique(overlay[overlay > 0])
+        for ii in range(len(indexes_to_plot)):
+            im1 = 255 * (overlay == indexes_to_plot[ii]).astype(np.uint8)
+            contours, hierarchy = cv2.findContours(im1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels + 1)[0][0]
+            cv2.drawContours(heatmap, contours, -1, 255 * cmap.colors[color_label], 3)
+
+        heatmap_PIL = Image.fromarray(heatmap)
+        heatmap_PIL.show()
+
+        # Export image to QA_path to evaluate the quality of the pre-processing.
+        os.makedirs(QA_path, exist_ok=True)
+        img_pth = os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')
+        heatmap_PIL.save(img_pth, 'pdf')
+        """
 
     def tile_membership(self, edge, coords, patch_size, contours_idx_within_ROI, remove_BW, WSI_object, df):
         # Start by assuming that the patch is within the contour, and remove it if it does not meet
