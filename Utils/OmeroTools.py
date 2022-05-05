@@ -29,12 +29,59 @@ def connect(hostname, username, password, **kwargs):
     :param password: Password
     :return: Connected BlitzGateway
     """
-    conn = BlitzGateway(username, password,
-                        host=hostname, secure=True, **kwargs)
+    conn = BlitzGateway(username, password, host=hostname, secure=True, **kwargs)
     conn.connect()
     conn.c.enableKeepAlive(60)
     return conn
 
+def disconnect(conn):
+    """
+    Disconnect from an OMERO server
+    :param conn: The BlitzGateway
+    """
+    conn.close()
+
+def print_obj(obj, indent=0):
+    """
+    Helper method to display info about OMERO objects.
+    Not all objects will have a "name" or owner field.
+    """
+    print("""%s%s:%s  Name:"%s" (owner=%s)""" % (
+        " " * indent,
+        obj.OMERO_CLASS,
+        obj.getId(),
+        obj.getName(),
+        obj.getName()))#obj.getOwnerOmeName()))
+
+
+
+def get_existing_map_annotations(obj):
+    """Get all Map Annotations linked to the object"""
+    ord_dict = OrderedDict()
+    for ann in obj.listAnnotations():
+        if isinstance(ann, omero.gateway.MapAnnotationWrapper):
+            kvs = ann.getValue()
+            for k, v in kvs:
+                if k not in ord_dict:
+                    ord_dict[k] = set()
+                ord_dict[k].add(v)
+    return ord_dict
+
+def remove_map_annotations(conn, object):
+    """Remove ALL Map Annotations on the object"""
+    anns = list(object.listAnnotations())
+    mapann_ids = [ann.id for ann in anns
+                  if isinstance(ann, omero.gateway.MapAnnotationWrapper)]
+
+    try:
+        delete = Delete2(targetObjects={'MapAnnotation': mapann_ids})
+        handle = conn.c.sf.submit(delete)
+        conn.c.waitOnCmd(handle, loops=10, ms=500, failonerror=True,
+                         failontimeout=False, closehandle=False)
+
+    except Exception as ex:
+        print("Failed to delete links: {}".format(ex.message))
+    return
 
 # We have a helper function for creating an ROI and linking it to new shapes
 def create_roi(img, shapes):
@@ -76,8 +123,8 @@ def rgba_to_int(red, green, blue, alpha=255):
 
 
 def download_image(imageid, image_dir, user, host, pw):
-
-    with cli_login("{user}@{host}", "-w", "{pw}") as cli:
+    login_cmd = user+"@"+host
+    with cli_login(login_cmd, "-w", pw) as cli:
         cli.invoke(["download", f'Image:{imageid}',image_dir])
 
 
@@ -176,27 +223,7 @@ if __name__ == '__main__':
     target_member = 'msimard'
     target_group = 'Sarcoma Classification'
     ids = ['484759']  # ids should be a list
-
+    download_image('484759','./Data', user, host, pw)
     download_omero_ROIs(host=host, user=user, pw=pw, target_group=target_group, target_member=target_member, ids=ids,
                         download_path=download_path)
 
-    # Example of how to use the upload_omero_polygon_ROIs function:
-
-    # Input parameters
-    host = '128.16.11.124'
-    user = 'msimard'
-    pw = 'msimard'
-    n_contours_to_draw = 5
-    export_ROI = False
-    contour_folder = '/home/mikael/Dropbox/M/PostDoc/UCL/datasets/Digital_Pathology/zhuoyan/to_omero/contours/matlab_coordinates/'
-    target_IDs = ['210000003', '210002933']
-    target_contours = ['AEDClustering_210000003_C4_tumour_binary_matlab_contours.mat',
-                       'AEDClustering_210002933_C4_tumour_binary_matlab_contours.mat']
-    target_member = 'zhuoyanshen'
-    target_group = 'Mitosis Detection'
-    contour_prefix_on_omero = "Autoencoder"
-
-    upload_omero_polygon_ROIs(host=host, user=user, pw=pw, n_contours_to_draw=n_contours_to_draw, export_ROI=export_ROI,
-                              contour_folder=contour_folder, target_IDs=target_IDs, target_contours=target_contours,
-                              target_member=target_member, target_group=target_group,
-                              contour_prefix_on_omero=contour_prefix_on_omero)

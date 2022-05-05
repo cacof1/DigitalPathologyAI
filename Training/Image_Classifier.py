@@ -1,24 +1,22 @@
 from torchvision import transforms
 import torch
 import pytorch_lightning as pl
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, WSIQuery, DataGenerator
+from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, DataGenerator,QueryFromServer, Synchronize
 from Model.ConvNet import ConvNet
 from Model.ConvNeXt import ConvNeXt
 from Model.Transformer import ViT
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 import toml
-from utils import GetInfo
+from Utils import GetInfo
 from torch.utils.data import DataLoader
 from QA.Normalization.Colour import ColourNorm
 import numpy as np
-import os
+import os,sys
 from sklearn.metrics import confusion_matrix
 
 # Load configuration file and name
-#config = toml.load(sys.argv[1])'"
-config = toml.load('./config_files/trainer_tumour_convnet.ini')
-# config = toml.load('./config_files/infer_tumour_convnet_5classes.ini')
+config = toml.load(sys.argv[1])
 name = GetInfo.format_model_name(config)
 
 # Set up all logging (if training)
@@ -38,8 +36,13 @@ if config['MODEL']['Inference'] is False:
 
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
-# Return WSI according to the selected CRITERIA in the configuration file.
-ids = WSIQuery(config)
+
+
+#Return WSI according to the selected CRITERIA in the configuration file and download locally
+dataframe = QueryFromServer(config)
+print(dataframe)
+Synchronize(config, dataframe)
+
 
 if config['DATA']['Target'] == 'sarcoma_label':  # TODO : potentially move the following step out of Image_Classifier
     # Specific to sarcoma study: make sure that all ids have their "sarcoma_label" target.
