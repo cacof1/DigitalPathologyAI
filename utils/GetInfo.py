@@ -4,7 +4,7 @@ import numpy as np
 
 def ShowTrainValTestInfo(data, config):
 
-    target = config['DATA']['Target']
+    target = config['DATA']['Label_Name']
 
     if config['MODEL']['Inference'] is False:
 
@@ -81,8 +81,8 @@ def format_model_name(config):
         # General model parameters block
 
         dimstr = ''
-        for dim in range(len(config['DATA']['Dim'])):
-            dimstr = dimstr + str(config['DATA']['Dim'][dim][0]) + '_'
+        for dim in range(len(config['DATA']['Patch_Size'])):
+            dimstr = dimstr + str(config['DATA']['Patch_Size'][dim][0]) + '_'
 
         visstr = ''
         for vis in range(len(config['DATA']['Vis'])):
@@ -110,7 +110,7 @@ def format_model_name(config):
         sched_block = 'empty_scheduler'
         if str(config['SCHEDULER']['Type']) == 'cosine_warmup':
             sched_block = '_' + str(config['SCHEDULER']['Type']) +\
-                          '_W' + str(config['SCHEDULER']['Warmup_Epochs'])
+                          '_W' + str(config['SCHEDULER']['Cos_Warmup_Epochs'])
         elif str(config['SCHEDULER']['Type']) == 'stepLR':
             sched_block = '_' + str(config['SCHEDULER']['Type']) +\
                           '_G' + str(config['SCHEDULER']['Lin_Gamma']) +\
@@ -129,7 +129,7 @@ def format_model_name(config):
         # ----------------------------------------------------------------------------------------------------------------
         # quality control (QC) block (all methods)
         QC_block = ''
-        if config['QC']['Macenko_Norm'] is True:
+        if 'Colour_Norm_File' in config['NORMALIZATION']:
             QC_block = '_macenko'
 
         # ----------------------------------------------------------------------------------------------------------------

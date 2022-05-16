@@ -103,14 +103,14 @@ class ViT(pl.LightningModule):
         self.config = config
         self.in_channels = 3  # hard coded. This should not change, but you can add it to config file if needed.
         self.forward_features = nn.Sequential(
-            PatchEmbedding(self.in_channels, config["DATA"]["Sub_Patch_Size"],
-                           config["MODEL"]["Emb_Size"], config["DATA"]["Dim"][0][0]),
-            TransformerEncoder(config["MODEL"]["Depth"], emb_size=config["MODEL"]["Emb_Size"],
+            PatchEmbedding(self.in_channels, config["DATA"]["Sub_Patch_Size_ViT"],
+                           config["MODEL"]["Emb_Size_ViT"], config["DATA"]["Dim"][0][0]),
+            TransformerEncoder(config["MODEL"]["Depth_ViT"], emb_size=config["MODEL"]["Emb_Size_ViT"],
                                num_heads=config['MODEL']['N_Heads_ViT'], drop=config['MODEL']['Drop_Rate'],
                                **kwargs),
         )
 
-        self.classification_head = ClassificationHead(config["MODEL"]["Emb_Size"], config["DATA"]["N_Classes"])
+        self.classification_head = ClassificationHead(config["MODEL"]["Emb_Size_ViT"], config["DATA"]["N_Classes"])
 
         self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["Loss_Function"])()
 
@@ -174,7 +174,7 @@ class ViT(pl.LightningModule):
             # https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
             n_steps_per_epoch = self.config['DATA']['N_Training_Examples'] // self.config['MODEL']['Batch_Size']
             total_steps = n_steps_per_epoch * self.config['MODEL']['Max_Epochs']
-            warmup_steps = self.config['SCHEDULER']['Warmup_Epochs'] * n_steps_per_epoch
+            warmup_steps = self.config['SCHEDULER']['Cos_Warmup_Epochs'] * n_steps_per_epoch
 
             sched = transformers.optimization.get_cosine_schedule_with_warmup(optimizer,
                                                                               num_warmup_steps=warmup_steps,

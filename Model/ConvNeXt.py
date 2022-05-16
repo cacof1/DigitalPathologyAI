@@ -174,7 +174,7 @@ class ConvNeXt(pl.LightningModule):
             # https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
             n_steps_per_epoch = self.config['DATA']['N_Training_Examples'] // self.config['MODEL']['Batch_Size']
             total_steps = n_steps_per_epoch * self.config['MODEL']['Max_Epochs']
-            warmup_steps = self.config['SCHEDULER']['Warmup_Epochs'] * n_steps_per_epoch
+            warmup_steps = self.config['SCHEDULER']['Cos_Warmup_Epochs'] * n_steps_per_epoch
 
             sched = transformers.optimization.get_cosine_schedule_with_warmup(optimizer,
                                                                               num_warmup_steps=warmup_steps,
