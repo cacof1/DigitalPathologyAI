@@ -12,12 +12,13 @@ from utils import GetInfo
 from torch.utils.data import DataLoader
 from QA.Normalization.Colour import ColourNorm
 import numpy as np
+import sys
 import os
 from sklearn.metrics import confusion_matrix
 
 # Load configuration file and name
-#config = toml.load(sys.argv[1])'"
-config = toml.load('./config_files/preprocessing/trainer_tumour_convnet.ini')
+config = toml.load(sys.argv[1])
+#config = toml.load('./config_files/preprocessing/trainer_tumour_convnet.ini')
 # config = toml.load('./config_files/infer_tumour_convnet_5classes.ini')
 name = GetInfo.format_model_name(config)
 
