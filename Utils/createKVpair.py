@@ -20,69 +20,8 @@ import numpy as np
 
 from omero.util.populate_roi import DownloadingOriginalFileProvider
 from collections import OrderedDict
+from OmeroTools import *
 
-def print_obj(obj, indent=0):
-    """
-    Helper method to display info about OMERO objects.
-    Not all objects will have a "name" or owner field.
-    """
-    print("""%s%s:%s  Name:"%s" (owner=%s)""" % (
-        " " * indent,
-        obj.OMERO_CLASS,
-        obj.getId(),
-        obj.getName(),
-        obj.getName()))#obj.getOwnerOmeName()))
-    
-def connect(hostname, username, password):
-    """
-    Connect to an OMERO server
-    :param hostname: Host name
-    :param username: User
-    :param password: Password
-    :return: Connected BlitzGateway
-    """
-    conn = BlitzGateway(username, password,
-                        host=hostname, secure=True)
-    conn.connect()
-    conn.c.enableKeepAlive(60)
-    return conn
-
-def disconnect(conn):
-    """
-    Disconnect from an OMERO server
-    :param conn: The BlitzGateway
-    """
-    conn.close()
-    
-def get_existing_map_annotations(obj):
-    """Get all Map Annotations linked to the object"""
-    ord_dict = OrderedDict()
-    for ann in obj.listAnnotations():
-        if isinstance(ann, omero.gateway.MapAnnotationWrapper):
-            kvs = ann.getValue()
-            for k, v in kvs:
-                if k not in ord_dict:
-                    ord_dict[k] = set()
-                ord_dict[k].add(v)
-    return ord_dict
-
-
-def remove_map_annotations(conn, object):
-    """Remove ALL Map Annotations on the object"""
-    anns = list(object.listAnnotations())
-    mapann_ids = [ann.id for ann in anns
-                  if isinstance(ann, omero.gateway.MapAnnotationWrapper)]
-
-    try:
-        delete = Delete2(targetObjects={'MapAnnotation': mapann_ids})
-        handle = conn.c.sf.submit(delete)
-        conn.c.waitOnCmd(handle, loops=10, ms=500, failonerror=True,
-                         failontimeout=False, closehandle=False)
-
-    except Exception as ex:
-        print("Failed to delete links: {}".format(ex.message))
-    return
-    
 
 ## CONNECTION
 HOST = '128.16.11.124'

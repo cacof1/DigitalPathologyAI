@@ -9,8 +9,12 @@ import numpy as np
 import torch
 import glob
 import os
-from utils import sampling_schemes
-
+import Utils.OmeroTools
+import omero
+import itertools
+import Utils.sampling_schemes as sampling_schemes
+from Utils.OmeroTools import *
+from pathlib import Path
 class DataGenerator(torch.utils.data.Dataset):
 
     def __init__(self, coords_file, target="tumour_label", dim_list=[(256, 256)], vis_list=[0],
@@ -128,3 +132,46 @@ def SaveFileParameter(df, Patch_Folder, column_to_add, label_to_add):
     for file_id, df_split in df.groupby(df.file_id):
         TotalPath = Path(CoordsPath, str(file_id) + ".csv")
         df_split.to_csv(str(TotalPath))
+    
+def QueryFromServer(config, **kwargs):
+    print("Querying from Server")
+    df = pd.DataFrame()
+    conn = connect(config['OMERO']['host'], config['OMERO']['user'], config['OMERO']['pw'], group =  config['OMERO']['target_group'])
+
+    keys = list(config['CRITERIA'].keys())
+    value_iter = itertools.product(*config['CRITERIA'].values()) ## Create a joint list with all elements
+
+    for value in value_iter:
+        query_base = """
+        select image.id, image.name from 
+        ImageAnnotationLink ial
+        join ial.child a
+        join ial.parent image
+        """
+        query_end = ""
+
+        params = omero.sys.ParametersI()        
+        for nb, temp in enumerate(value):
+            query_base += "join a.mapValue mv"+str(nb)+" \n        "
+
+            if(nb==0): query_end += "where (mv"+str(nb)+".name = :key"+str(nb)+" and mv"+str(nb)+".value = :value"+str(nb)+")"
+            else: query_end += " and (mv"+str(nb)+".name = :key"+str(nb)+" and mv"+str(nb)+".value = :value"+str(nb)+")"
+            params.addString('key'+str(nb),keys[nb]) 
+            params.addString('value'+str(nb), temp)
+
+        query = query_base + query_end
+        #params.addString('project',str(project.getId()))
+        result = conn.getQueryService().projection(query, params, conn.SERVICE_OPTS)
+        series = pd.DataFrame([ [row[0].val, row[1].val] for row in result], columns = ["id","Name"])
+        for nb, temp in enumerate(value): series[keys[nb]] = temp
+        df = pd.concat([df, series])
+    conn.close()
+    return df
+
+
+def Synchronize(config, df):
+    conn = connect(config['OMERO']['host'], config['OMERO']['user'], config['OMERO']['pw'], group =  config['OMERO']['target_group'])
+    for index,image in df.iterrows():
+        if( not Path(config['DATA']['Folder'], image['Name'][:-4]).is_file()): ## Weird ugly [0] added at the end of each file
+            download_image(image['id'],config['DATA']['Folder'], config['OMERO']['user'], config['OMERO']['host'], config['OMERO']['pw'])
+    conn.close()
