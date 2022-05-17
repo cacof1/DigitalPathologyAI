@@ -11,12 +11,14 @@ import torch
 from torch.utils.data import DataLoader
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
+import sys
 
 
-config = toml.load('./config_files/preprocessing/trainer_tumour_convnet.ini')
+config = toml.load(sys.argv[1])
+#config = toml.load('./config_files/preprocessing/trainer_tumour_convnet.ini')  example of local file.
 
 # stuff to try:
-# 1) create csv files from the 29 training examples, and train on it. Get a model.
+# 1) create csv files from the 48 training examples, and train on it. Get a model.
 # 2) use said model to test on the remaining 10 examples, and make sure that those examples you get their labels.
 # 3) see what happens when predicting a new slide?? with no label at all. Can I use contourstocsv?
 
@@ -52,6 +54,9 @@ if config['MODEL']['Inference'] is False:
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
 # Return WSI according to the selected CRITERIA in the configuration file.
+# TODO: implement QueryFromServer, Synchronize instead of WSIQuery.
+
+# instead of
 ids = WSIQuery(config)
 
 # Load coords_file

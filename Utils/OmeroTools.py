@@ -224,6 +224,3 @@ if __name__ == '__main__':
     target_group = 'Sarcoma Classification'
     ids = ['484759']  # ids should be a list
     download_image('484759','./Data', user, host, pw)
-    download_omero_ROIs(host=host, user=user, pw=pw, target_group=target_group, target_member=target_member, ids=ids,
-                        download_path=download_path)
-

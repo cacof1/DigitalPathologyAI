@@ -10,6 +10,7 @@ import utils.OmeroTools
 from PIL import Image
 from tqdm import tqdm
 import torch
+from Visualization import WSI_Viewer
 
 sys.path.append('../')
 from QA.Normalization.Colour import ColourNorm
@@ -278,17 +279,14 @@ class PreProcessor:
         all_labels = np.concatenate((legend_label, df_export[self.label_name].values + 1), axis=0)
         all_coords = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
 
-
-        """## Broken for now -- to fix
-        heatmap, overlay = WSI_object.visHeatmap(all_labels,
-                                                 all_coords,
-                                                 vis_level=vis_level_view,
-                                                 patch_size=(patch_size, patch_size),
-                                                 segment=False,
-                                                 cmap=cmap,
-                                                 alpha=0.4,
-                                                 blank_canvas=False,
-                                                 return_overlay=True)
+        # Display
+        heatmap, overlay = WSI_Viewer.generate_overlay(WSI_object,
+                                                       labels=all_labels,
+                                                       coords=all_coords,
+                                                       vis_level = vis_level_view,
+                                                       patch_size = (patch_size, patch_size),
+                                                       cmap=cmap,
+                                                       alpha=0.4)
 
         # Draw the contours for each label
         heatmap = np.array(heatmap)
@@ -306,7 +304,6 @@ class PreProcessor:
         os.makedirs(QA_path, exist_ok=True)
         img_pth = os.path.join(QA_path, ID + '_patch_' + str(patch_size) + '.pdf')
         heatmap_PIL.save(img_pth, 'pdf')
-        """
 
     def tile_membership(self, edge, coords, patch_size, contours_idx_within_ROI, remove_BW, WSI_object, df):
         # Start by assuming that the patch is within the contour, and remove it if it does not meet
