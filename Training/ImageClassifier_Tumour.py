@@ -2,7 +2,7 @@ import os
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, WSIQuery, DataGenerator
 from preprocessing.AnnotationsToCSV import PreProcessor
 import toml
-from utils import GetInfo
+from Utils import GetInfo
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 import pytorch_lightning as pl
@@ -25,6 +25,7 @@ config = toml.load(sys.argv[1])
 ########################################################################################################################
 #                                      1. Pre-processing: create csv files
 force_preprocessing = 0
+# TODO: make an option to only make non-existing ones!
 
 if force_preprocessing:
     preprocessor = PreProcessor(config)

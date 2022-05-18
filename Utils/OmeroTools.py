@@ -128,10 +128,10 @@ def download_image(imageid, image_dir, user, host, pw):
         cli.invoke(["download", f'Image:{imageid}',image_dir])
 
 
-def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, target_member=None, ids=None,
+def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, ids=None,
                         download_path=None):
-    # Connection to the correct group and identify the correct ID.
-    conn, target_member_ID = connect_to_member(host, user, pw, target_group, target_member)
+    # Connection to the correct group and identify the correct ID. Use user as target member.
+    conn, target_member_ID = connect_to_member(host, user, pw, target_group, user)
 
     # Set ROI options and load projects of target member
     roi_service = conn.getRoiService()
