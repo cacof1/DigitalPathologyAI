@@ -8,6 +8,8 @@ try:
     from omero.gateway import BlitzGateway
     from omero.cli import cli_login, CLI
     import omero
+    from omero.cmd import DiskUsage2
+    from omero.cli import CmdControl    
 except ImportError:
     print('Unable to load omero modules. Make sure they are installed, otherwise you will not be able to use omero'
           'tools to load data.')
@@ -20,6 +22,31 @@ rgb_cm = cmap.colors  # returns array-like color
 
 
 # Functions to upload/download contours from Omero.
+def get_size(client, file_class, file_id):
+    req = DiskUsage2()
+    cmd = CmdControl()
+    req.targetObjects, req.targetClasses = _usage_obj([file_class+":"+file_id])
+    rsp, status, cb = cmd.response(client, req)
+    return rsp
+def _usage_obj(obj):
+
+        objects = {}
+        classes = set()
+        for o in obj:
+            try:
+                parts = o.split(":", 1)
+                assert len(parts) == 2
+                klass = parts[0]
+                if '*' in parts[1]:
+                    classes.add(klass)
+                else:
+                    ids = [int(id) for id in parts[1].split(",")]
+                    objects.setdefault(klass, []).extend(ids)
+            except:
+                raise ValueError("Bad object: ", o)
+        print(objects, list(classes))
+        return (objects, list(classes))
+
 
 def connect(hostname, username, password, **kwargs):
     """
