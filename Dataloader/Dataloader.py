@@ -172,6 +172,24 @@ def QueryFromServer(config, **kwargs):
 def Synchronize(config, df):
     conn = connect(config['OMERO']['host'], config['OMERO']['user'], config['OMERO']['pw'], group =  config['OMERO']['target_group'])
     for index,image in df.iterrows():
-        if( not Path(config['DATA']['Folder'], image['Name'][:-4]).is_file()): ## Weird ugly [0] added at the end of each file
+        filename = Path(config['DATA']['Folder'], image['Name'][:-4]) ## Weird ugly [0] added at the end of each file
+        if(filename.is_file()): ## Exist
+            continue
+            """
+            print("Exists")
+            print(filename)
+            try:
+                print("Try open")
+                openslide.open_slide(str(filename))
+                print("Opened")
+            except: ## Corrupted
+                print("Corrupted")
+                os.remove(filename)
+                print("Removed")                
+                download_image(image['id'],config['DATA']['Folder'], config['OMERO']['user'], config['OMERO']['host'], config['OMERO']['pw'])
+            """
+        else: ## Doesn't exist
+            print("Doesn't exist")
             download_image(image['id'],config['DATA']['Folder'], config['OMERO']['user'], config['OMERO']['host'], config['OMERO']['pw'])
+
     conn.close()
