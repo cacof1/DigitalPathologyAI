@@ -1,24 +1,19 @@
-from torchvision import transforms
-import torch
+import os
+import sys
 import pytorch_lightning as pl
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, DataGenerator,QueryFromServer, Synchronize
-from Model.ConvNet import ConvNet
-from Model.ConvNeXt import ConvNeXt
-from Model.Transformer import ViT
+import toml
+import torch
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
-import toml
-from Utils import GetInfo
 from torch.utils.data import DataLoader
+from torchvision import transforms
+from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, DataGenerator, QueryFromServer, \
+    Synchronize
+from Model.ConvNeXt import ConvNeXt
+from Model.ConvNet import ConvNet
+from Model.Transformer import ViT
 from QA.Normalization.Colour import ColourNorm
-import numpy as np
-
-import sys
-import os
-
-import os,sys
-
-from sklearn.metrics import confusion_matrix
+from Utils import GetInfo
 
 # Load configuration file and name
 config = toml.load(sys.argv[1])
