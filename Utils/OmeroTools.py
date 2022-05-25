@@ -9,6 +9,8 @@ try:
     from omero.gateway import BlitzGateway, Delete2
     from omero.cli import cli_login, CLI
     import omero
+    from omero.cmd import DiskUsage2
+    from omero.cli import CmdControl    
 except ImportError:
     print('Unable to load omero modules. Make sure they are installed, otherwise you will not be able to use omero'
           'tools to load data.')

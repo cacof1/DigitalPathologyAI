@@ -9,7 +9,6 @@ import numpy as np
 import torch
 import glob
 import os
-import Utils.OmeroTools
 import omero
 import itertools
 import Utils.sampling_schemes as sampling_schemes
@@ -155,19 +154,22 @@ def SaveFileParameter(id_dict, df, Patch_Folder, column_to_add, label_to_add):
 def QueryFromServer(config, **kwargs):
     print("Querying from Server")
     df = pd.DataFrame()
-    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'],
-                   group=config['OMERO']['Target_Group'])
 
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw']) ## Group not implemented yet
     keys = list(config['CRITERIA'].keys())
     value_iter = itertools.product(*config['CRITERIA'].values())  ## Create a joint list with all elements
 
     for value in value_iter:
         query_base = """
-        select image.id, image.name from 
+        select image.id, image.name, f2.size from 
         ImageAnnotationLink ial
         join ial.child a
         join ial.parent image
-        """
+        left outer join image.pixels p
+        left outer join image.fileset as fs
+        left outer join fs.usedFiles as uf
+        left outer join uf.originalFile as f2     
+        """        
         query_end = ""
 
         params = omero.sys.ParametersI()
@@ -186,18 +188,17 @@ def QueryFromServer(config, **kwargs):
 
         query = query_base + query_end
         #params.addString('project',str(project.getId()))
-        result = conn.getQueryService().projection(query, params, conn.SERVICE_OPTS)
-        series = pd.DataFrame([ [row[0].val, row[1].val] for row in result], columns = ["id","Name"])
+        #result = conn.getQueryService().projection(query, params, conn.SERVICE_OPTS)         
+        result = conn.getQueryService().projection(query, params, {"omero.group": "-1"})
+        series = pd.DataFrame([ [row[0].val, row[1].val, row[2].val] for row in result], columns = ["id","Name","Size"])
         for nb, temp in enumerate(value): series[keys[nb]] = temp
         df = pd.concat([df, series])
     conn.close()
     return df
 
 
-def Synchronize(config, df):
-    conn = connect(config['OMERO']['host'], config['OMERO']['user'], config['OMERO']['pw'], group =  config['OMERO']['target_group'])
+def Synchronize(config, df):    
     for index,image in df.iterrows():
-
         filename = Path(config['DATA']['Folder'], image['Name'][:-4]) ## Weird ugly [0] added at the end of each file
         if(filename.is_file()): ## Exist
             if(not filename.stat().st_size == image['Size']): ##Corrupted
