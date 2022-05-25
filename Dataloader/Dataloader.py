@@ -135,7 +135,7 @@ def SaveFileParameter(df, Patch_Folder, column_to_add, label_to_add):
 def QueryFromServer(config, **kwargs):
     print("Querying from Server")
     df = pd.DataFrame()
-    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'], group =  config['OMERO']['Target_Group'])
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw']) ## Group not implemented yet
 
     keys = list(config['CRITERIA'].keys())
     value_iter = itertools.product(*config['CRITERIA'].values()) ## Create a joint list with all elements
@@ -164,7 +164,8 @@ def QueryFromServer(config, **kwargs):
 
         query = query_base + query_end
         #params.addString('project',str(project.getId()))
-        result = conn.getQueryService().projection(query, params, conn.SERVICE_OPTS)
+        #result = conn.getQueryService().projection(query, params, conn.SERVICE_OPTS)         
+        result = conn.getQueryService().projection(query, params, {"omero.group": "-1"})
         series = pd.DataFrame([ [row[0].val, row[1].val, row[2].val] for row in result], columns = ["id","Name","Size"])
         for nb, temp in enumerate(value): series[keys[nb]] = temp
         df = pd.concat([df, series])
