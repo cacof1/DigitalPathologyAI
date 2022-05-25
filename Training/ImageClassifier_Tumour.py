@@ -1,6 +1,7 @@
 import os
+import sys
 from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, WSIQuery, DataGenerator
-from preprocessing.AnnotationsToCSV import PreProcessor
+from preprocessing.PreProcessingTools import PreProcessor
 import toml
 from Utils import GetInfo
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -11,27 +12,18 @@ import torch
 from torch.utils.data import DataLoader
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
-import sys
 
 
 config = toml.load(sys.argv[1])
-#config = toml.load('./config_files/preprocessing/trainer_tumour_convnet.ini')  example of local file.
-
-# stuff to try:
-# 1) create csv files from the 48 training examples, and train on it. Get a model.
-# 2) use said model to test on the remaining 10 examples, and make sure that those examples you get their labels.
-# 3) see what happens when predicting a new slide?? with no label at all. Can I use contourstocsv?
+# config = toml.load('/home/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/trainer_tumour_convnet.ini')  # example of config file
 
 ########################################################################################################################
-#                                      1. Pre-processing: create csv files
-force_preprocessing = 0
-# TODO: make an option to only make non-existing ones!
+#                                      1. Pre-processing: create npy files
 
-if force_preprocessing:
-    preprocessor = PreProcessor(config)
-    preprocessor.ContoursToCSV()
-
-# preprocessor.LabelToCSV()
+preprocessor = PreProcessor(config)
+preprocessor.AnnotationsToNPY(overwrite=False)
+id_dict = dict(zip(preprocessor.config['CRITERIA']['id_internal'], preprocessor.config['INTERNAL']['WSI_processing_index']))
+del preprocessor
 
 ########################################################################################################################
 #                                                2. Model training
@@ -54,14 +46,8 @@ if config['MODEL']['Inference'] is False:
 
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
-# Return WSI according to the selected CRITERIA in the configuration file.
-# TODO: implement QueryFromServer, Synchronize instead of WSIQuery.
-
-# instead of
-ids = WSIQuery(config)
-
 # Load coords_file
-coords_file = LoadFileParameter(ids, config['DATA']['SVS_Folder'], config['DATA']['Patches_Folder'])
+coords_file = LoadFileParameter(id_dict, config['DATA']['SVS_Folder'])
 
 # Augment data on the training set
 if config['AUGMENTATION']['Rand_Operations'] > 0:
@@ -155,7 +141,7 @@ else:  # infer
 
     for i in range(predicted_classes_prob.shape[1]):
         print('Adding the column ' + '"prob_' + config['DATA']['Label_Name'] + str(i) + '"...')
-        SaveFileParameter(coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
+        SaveFileParameter(id_dict, coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
                           'prob_' + config['DATA']['Label_Name'] + str(i))
 
 

@@ -17,6 +17,17 @@ from Utils import GetInfo
 
 # Load configuration file and name
 config = toml.load(sys.argv[1])
+
+########################################################################################################################
+#                                      1. Pre-processing: create npy files
+preprocessor = PreProcessor(config)
+preprocessor.AnnotationsToNPY(overwrite=False)
+id_dict = dict(zip(preprocessor.config['CRITERIA']['id_internal'], preprocessor.config['INTERNAL']['WSI_processing_index']))
+del preprocessor
+
+########################################################################################################################
+#                                                2. Model training
+
 name = GetInfo.format_model_name(config)
 
 # Set up all logging (if training)
@@ -36,27 +47,11 @@ if config['MODEL']['Inference'] is False:
 
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
-
-
-#Return WSI according to the selected CRITERIA in the configuration file and download locally
-dataframe = QueryFromServer(config)
-print(dataframe)
-Synchronize(config, dataframe)
-
-
-if config['DATA']['Label_Name'] == 'sarcoma_label':  # TODO : potentially move the following step out of Image_Classifier
-    # Specific to sarcoma study: make sure that all ids have their "sarcoma_label" target.
-    # For another target, make sure you use your own function to append your targets to csv files.
-    from __local.SarcomaClassification.Methods import AppendSarcomaLabel
-    AppendSarcomaLabel(ids, config['DATA']['SVS_Folder'], config['DATA']['Patches_Folder'],
-                       mapping_file='mapping_SFTl_DF_NF_SF')
-
 # Load coords_file
-coords_file = LoadFileParameter(ids, config['DATA']['SVS_Folder'], config['DATA']['Patches_Folder'])
+coords_file = LoadFileParameter(id_dict, config['DATA']['SVS_Folder'])
 
-if config['DATA']['Label_Name'] == 'sarcoma_label':  # TODO: maybe encode more efficiently in the config file.
-    # Select a subset of coords files. In the sarcoma study, we only consider patches labelled as tumour.
-    coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]
+# TODO: mask coords_file using pre-processing data to identify tumour patches.
+#coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]
 
 # Augment data on the training set
 if config['AUGMENTATION']['Rand_Operations'] > 0:
@@ -167,7 +162,7 @@ else:  # infer
 
     for i in range(predicted_classes_prob.shape[1]):
         print('Adding the column ' + '"prob_' + config['DATA']['Label_Name'] + str(i) + '"...')
-        SaveFileParameter(coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
+        SaveFileParameter(id_dict, coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
                           'prob_' + config['DATA']['Label_Name'] + str(i))
 
 

@@ -15,6 +15,8 @@ import itertools
 import Utils.sampling_schemes as sampling_schemes
 from Utils.OmeroTools import *
 from pathlib import Path
+
+
 class DataGenerator(torch.utils.data.Dataset):
 
     def __init__(self, coords_file, target="tumour_label", dim_list=[(256, 256)], vis_list=[0],
@@ -34,19 +36,21 @@ class DataGenerator(torch.utils.data.Dataset):
 
     def __getitem__(self, id):
         # load image
-        wsi_file  = openslide.open_slide(self.coords["wsi_path"].iloc[id])
+        wsi_file = openslide.open_slide(self.coords["wsi_path"].iloc[id])
 
         data_dict = {}
         for dim in self.dim_list:
             for vis_level in self.vis_list:
-                key = "_".join(map(str,dim))+"_"+str(vis_level)
-                data_dict[key]  = np.array(wsi_file.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
-                                                                     vis_level, dim).convert("RGB"))
+                key = "_".join(map(str, dim)) + "_" + str(vis_level)
+                data_dict[key] = np.array(
+                    wsi_file.read_region([self.coords["coords_x"].iloc[id], self.coords["coords_y"].iloc[id]],
+                                         vis_level, dim).convert("RGB"))
 
         ## Transform - Data Augmentation
 
         if self.transform: data_dict = {key: self.transform(value) for (key, value) in data_dict.items()}
-        if (self.inference): return data_dict
+        if (self.inference):
+            return data_dict
 
         else:
             label = int(round(self.coords[self.target].iloc[id]))
@@ -81,10 +85,14 @@ class DataModule(LightningDataModule):
                                                            train_size=train_size, test_size=val_size)
 
         self.train_data = DataGenerator(coords_file_train, transform=train_transform, target=target, **kwargs)
-        self.val_data   = DataGenerator(coords_file_valid,   transform=val_transform, target=target, **kwargs)
+        self.val_data = DataGenerator(coords_file_valid, transform=val_transform, target=target, **kwargs)
 
-    def train_dataloader(self): return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
-    def val_dataloader(self):   return DataLoader(self.val_data,   batch_size=self.batch_size, num_workers=10, pin_memory=True)
+    def train_dataloader(self):
+        return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
+
 
 def WSIQuery(config, **kwargs):  ## Select based on queries
 
@@ -99,16 +107,24 @@ def WSIQuery(config, **kwargs):  ## Select based on queries
     ids = dataframe['id'].values
     return ids
 
-def LoadFileParameter(ids, svs_folder, patch_folder):
+
+def LoadFileParameter(id_dict, svs_folder):
+    """
+    :param id_dict: dict where keys are ids to be processed, and values specify which dataset to load in .npy file
+    :param svs_folder: main folder where svs are (will search recursively)
+    :return: coords_file
+    """
+
+    patch_folder = os.path.join(svs_folder, 'patches')
     coords_file = pd.DataFrame()
-    for filenb, file_id in enumerate(ids):
+    for filenb, file_id in enumerate(id_dict.keys()):
         try:
 
-            PatchPath = Path(patch_folder, '{}.csv'.format(file_id))
+            npy_file_path = os.path.join(patch_folder, '{}.npy'.format(file_id))
             search_WSI_query = os.path.join(svs_folder, '**', str(file_id) + '.svs')
             WSIPath = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
-
-            coords = pd.read_csv(PatchPath, header=0, index_col=0)
+            coords = np.load(npy_file_path, allow_pickle=True)[id_dict[file_id]]['dataframe']
+            #coords = pd.read_csv(PatchPath, header=0, index_col=0)
             coords = coords.astype({"coords_y": int, "coords_x": int})
             coords['file_id'] = file_id
             coords['wsi_path'] = str(WSIPath)
@@ -118,28 +134,32 @@ def LoadFileParameter(ids, svs_folder, patch_folder):
             else:
                 coords_file = pd.concat([coords_file, coords])
         except:
-            print('Unable to find patch data for file {}.csv'.format(file_id))
+            print('Unable to find patch data for file {}.npy'.format(file_id))
             continue
 
     return coords_file
 
 
-def SaveFileParameter(df, Patch_Folder, column_to_add, label_to_add):
-    CoordsPath = Path(Patch_Folder)
-    CoordsPath.mkdir(parents=True, exist_ok=True)
+def SaveFileParameter(id_dict, df, Patch_Folder, column_to_add, label_to_add):
+
     df[label_to_add] = pd.Series(column_to_add, index=df.index)
     df = df.fillna(0)
     for file_id, df_split in df.groupby(df.file_id):
-        TotalPath = Path(CoordsPath, str(file_id) + ".csv")
-        df_split.to_csv(str(TotalPath))
-    
+
+        npy_file_path = os.path.join(Patch_Folder, str(file_id) + ".npy")
+        datasets = np.load(npy_file_path, allow_pickle=True)
+        datasets[id_dict[file_id]]['dataframe'] = df_split.copy()
+        np.save(npy_file_path, datasets)
+
+
 def QueryFromServer(config, **kwargs):
     print("Querying from Server")
     df = pd.DataFrame()
-    conn = connect(config['OMERO']['host'], config['OMERO']['user'], config['OMERO']['pw'], group =  config['OMERO']['target_group'])
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'],
+                   group=config['OMERO']['Target_Group'])
 
     keys = list(config['CRITERIA'].keys())
-    value_iter = itertools.product(*config['CRITERIA'].values()) ## Create a joint list with all elements
+    value_iter = itertools.product(*config['CRITERIA'].values())  ## Create a joint list with all elements
 
     for value in value_iter:
         query_base = """
@@ -150,14 +170,19 @@ def QueryFromServer(config, **kwargs):
         """
         query_end = ""
 
-        params = omero.sys.ParametersI()        
+        params = omero.sys.ParametersI()
         for nb, temp in enumerate(value):
-            query_base += "join a.mapValue mv"+str(nb)+" \n        "
+            query_base += "join a.mapValue mv" + str(nb) + " \n        "
 
-            if(nb==0): query_end += "where (mv"+str(nb)+".name = :key"+str(nb)+" and mv"+str(nb)+".value = :value"+str(nb)+")"
-            else: query_end += " and (mv"+str(nb)+".name = :key"+str(nb)+" and mv"+str(nb)+".value = :value"+str(nb)+")"
-            params.addString('key'+str(nb),keys[nb]) 
-            params.addString('value'+str(nb), temp)
+            if nb == 0:
+                query_end += "where (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
+                    nb) + ".value = :value" + str(nb) + ")"
+            else:
+                query_end += " and (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
+                    nb) + ".value = :value" + str(nb) + ")"
+
+            params.addString('key' + str(nb), keys[nb])
+            params.addString('value' + str(nb), temp)
 
         query = query_base + query_end
         #params.addString('project',str(project.getId()))
@@ -172,6 +197,15 @@ def QueryFromServer(config, **kwargs):
 def Synchronize(config, df):
     conn = connect(config['OMERO']['host'], config['OMERO']['user'], config['OMERO']['pw'], group =  config['OMERO']['target_group'])
     for index,image in df.iterrows():
-        if( not Path(config['DATA']['Folder'], image['Name'][:-4]).is_file()): ## Weird ugly [0] added at the end of each file
-            download_image(image['id'],config['DATA']['Folder'], config['OMERO']['user'], config['OMERO']['host'], config['OMERO']['pw'])
-    conn.close()
+
+        filename = Path(config['DATA']['Folder'], image['Name'][:-4]) ## Weird ugly [0] added at the end of each file
+        if(filename.is_file()): ## Exist
+            if(not filename.stat().st_size == image['Size']): ##Corrupted
+
+                print("File size doesn't match, redownloading")
+                os.remove(filename)
+                download_image(image['id'],config['DATA']['Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
+                
+        else: ## Doesn't exist
+            print("Doesn't exist")
+            download_image(image['id'],config['DATA']['Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])

@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
 import os, sys
+from collections import OrderedDict
 
 try:
     from omero.api import RoiOptions
     from omero.rtypes import rstring, rlong, unwrap, rdouble, rint
-    from omero.gateway import BlitzGateway
+    from omero.gateway import BlitzGateway, Delete2
     from omero.cli import cli_login, CLI
     import omero
 except ImportError:
@@ -34,12 +35,14 @@ def connect(hostname, username, password, **kwargs):
     conn.c.enableKeepAlive(60)
     return conn
 
+
 def disconnect(conn):
     """
     Disconnect from an OMERO server
     :param conn: The BlitzGateway
     """
     conn.close()
+
 
 def print_obj(obj, indent=0):
     """
@@ -51,8 +54,7 @@ def print_obj(obj, indent=0):
         obj.OMERO_CLASS,
         obj.getId(),
         obj.getName(),
-        obj.getName()))#obj.getOwnerOmeName()))
-
+        obj.getName()))  # obj.getOwnerOmeName()))
 
 
 def get_existing_map_annotations(obj):
@@ -66,6 +68,7 @@ def get_existing_map_annotations(obj):
                     ord_dict[k] = set()
                 ord_dict[k].add(v)
     return ord_dict
+
 
 def remove_map_annotations(conn, object):
     """Remove ALL Map Annotations on the object"""
@@ -82,6 +85,7 @@ def remove_map_annotations(conn, object):
     except Exception as ex:
         print("Failed to delete links: {}".format(ex.message))
     return
+
 
 # We have a helper function for creating an ROI and linking it to new shapes
 def create_roi(img, shapes):
@@ -121,11 +125,10 @@ def rgba_to_int(red, green, blue, alpha=255):
     return rgba_int
 
 
-
 def download_image(imageid, image_dir, user, host, pw):
-    login_cmd = user+"@"+host
+    login_cmd = user + "@" + host
     with cli_login(login_cmd, "-w", pw) as cli:
-        cli.invoke(["download", f'Image:{imageid}',image_dir])
+        cli.invoke(["download", f'Image:{imageid}', image_dir])
 
 
 def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, ids=None,
@@ -189,14 +192,14 @@ def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, ids=No
                         df = pd.DataFrame(
                             {'image_name': image_name, 'type': ROI_type, 'roi_id': ROI_id, 'Text': ROI_name,
                              'Points': ROI_points})
-                        export_file = download_path + id_string_omero + '_roi_measurements.csv'
+                        export_file = os.path.join(download_path, id_string_omero + '_roi_measurements.csv')
                         df.to_csv(export_file)
                         print(
                             'OMERO: {}/{} ROIs exported to location: {}'.format(len(ROI_name), str(image.getROICount()),
                                                                                 export_file))
 
-def list_project_files(host=None, user=None, pw=None, target_group=None, target_member=None):
 
+def list_project_files(host=None, user=None, pw=None, target_group=None, target_member=None):
     # Connection to the correct group and identify the correct ID.
     conn, target_member_ID = connect_to_member(host, user, pw, target_group, target_member)
     projects = conn.getObjects("Project", opts={'owner': target_member_ID,
@@ -210,9 +213,10 @@ def list_project_files(host=None, user=None, pw=None, target_group=None, target_
             cd = dataset.getName()
             for image in dataset.listChildren():
                 pth = cp + '/' + cd + '/' + image.getName()
-                project_files.append(pth)  #TODO: maybe cat the project / dataset / image name also.
+                project_files.append(pth)  # TODO: maybe cat the project / dataset / image name also.
 
     return project_files
+
 
 if __name__ == '__main__':
     # Example of how to use the download_omero_ROIs function:
@@ -223,4 +227,4 @@ if __name__ == '__main__':
     target_member = 'msimard'
     target_group = 'Sarcoma Classification'
     ids = ['484759']  # ids should be a list
-    download_image('484759','./Data', user, host, pw)
+    download_image('484759', './Data', user, host, pw)
