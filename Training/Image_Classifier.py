@@ -1,22 +1,38 @@
 import os
-import sys
-import pytorch_lightning as pl
+from Dataloader.Dataloader import *
+from preprocessing.PreProcessingTools import PreProcessor
 import toml
-import torch
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, DataGenerator, QueryFromServer, \
-    Synchronize
-from Model.ConvNeXt import ConvNeXt
-from Model.ConvNet import ConvNet
-from Model.Transformer import ViT
-from QA.Normalization.Colour import ColourNorm
 from Utils import GetInfo
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+import pytorch_lightning as pl
+from torchvision import transforms
+import torch
+from torch.utils.data import DataLoader
+from QA.Normalization.Colour import ColourNorm
+from Model.ConvNet import ConvNet
 
 # Load configuration file and name
-config = toml.load(sys.argv[1])
+# config = toml.load(sys.argv[1])
+config = toml.load('/Users/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/sarcoma/trainer_sarcoma_convnet.ini')  # example of config file
+
+########################################################################################################################
+# 1. Download all relevant files based on the configuration file
+
+datasets = QueryFromServer(config)
+Synchronize(config, datasets)
+ids = [d.split('.svs')[0] for d in datasets.Name.tolist()]  # For easy processing
+
+########################################################################################################################
+# 2. Pre-processing: create npy files
+
+preprocessor = PreProcessor(config)
+preprocessor.AnnotationsToNPY(ids, overwrite=False)
+del preprocessor
+
+########################################################################################################################
+# 3. Model training
+
 name = GetInfo.format_model_name(config)
 
 # Set up all logging (if training)
@@ -36,27 +52,11 @@ if config['MODEL']['Inference'] is False:
 
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
-
-
-#Return WSI according to the selected CRITERIA in the configuration file and download locally
-dataframe = QueryFromServer(config)
-print(dataframe)
-Synchronize(config, dataframe)
-
-
-if config['DATA']['Label_Name'] == 'sarcoma_label':  # TODO : potentially move the following step out of Image_Classifier
-    # Specific to sarcoma study: make sure that all ids have their "sarcoma_label" target.
-    # For another target, make sure you use your own function to append your targets to csv files.
-    from __local.SarcomaClassification.Methods import AppendSarcomaLabel
-    AppendSarcomaLabel(ids, config['DATA']['SVS_Folder'], config['DATA']['Patches_Folder'],
-                       mapping_file='mapping_SFTl_DF_NF_SF')
-
 # Load coords_file
-coords_file = LoadFileParameter(ids, config['DATA']['SVS_Folder'], config['DATA']['Patches_Folder'])
+coords_file = LoadFileParameter(config, ids)
 
-if config['DATA']['Label_Name'] == 'sarcoma_label':  # TODO: maybe encode more efficiently in the config file.
-    # Select a subset of coords files. In the sarcoma study, we only consider patches labelled as tumour.
-    coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]
+# TODO: mask coords_file using pre-processing data to identify tumour patches.
+#coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]
 
 # Augment data on the training set
 if config['AUGMENTATION']['Rand_Operations'] > 0:
@@ -98,7 +98,7 @@ if config['MODEL']['Inference'] is False:  # train
         train_size=config['DATA']['Train_Size'],
         val_size=config['DATA']['Val_Size'],
         inference=False,
-        dim_list=config['DATA']['Dim'],
+        dim_list=config['DATA']['Patch_Size'],
         vis_list=config['DATA']['Vis'],
         n_per_sample=config['DATA']['N_Per_Sample'],
         target=config['DATA']['Label_Name'],
@@ -167,7 +167,7 @@ else:  # infer
 
     for i in range(predicted_classes_prob.shape[1]):
         print('Adding the column ' + '"prob_' + config['DATA']['Label_Name'] + str(i) + '"...')
-        SaveFileParameter(coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
+        SaveFileParameter(config, coords_file, predicted_classes_prob[:, i],
                           'prob_' + config['DATA']['Label_Name'] + str(i))
 
 
