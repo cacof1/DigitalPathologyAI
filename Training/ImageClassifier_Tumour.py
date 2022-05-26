@@ -1,6 +1,5 @@
 import os
-import sys
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, WSIQuery, DataGenerator
+from Dataloader.Dataloader import *
 from preprocessing.PreProcessingTools import PreProcessor
 import toml
 from Utils import GetInfo
@@ -13,20 +12,25 @@ from torch.utils.data import DataLoader
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 
-
-config = toml.load(sys.argv[1])
-# config = toml.load('/home/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/trainer_tumour_convnet.ini')  # example of config file
+# config = toml.load(sys.argv[1])
+config = toml.load('/Users/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/trainer_tumour_convnet.ini')  # example of config file
 
 ########################################################################################################################
-#                                      1. Pre-processing: create npy files
+# 1. Download all relevant files based on the configuration file
+
+datasets = QueryFromServer(config)
+Synchronize(config, datasets)
+ids = [d.split('.svs')[0] for d in datasets.Name.tolist()]  # For easy processing
+
+########################################################################################################################
+# 2. Pre-processing: create npy files
 
 preprocessor = PreProcessor(config)
-preprocessor.AnnotationsToNPY(overwrite=False)
-id_dict = dict(zip(preprocessor.config['CRITERIA']['id_internal'], preprocessor.config['INTERNAL']['WSI_processing_index']))
+preprocessor.AnnotationsToNPY(ids, overwrite=False)
 del preprocessor
 
 ########################################################################################################################
-#                                                2. Model training
+# 3. Model training
 
 name = GetInfo.format_model_name(config)
 
@@ -40,24 +44,28 @@ if config['MODEL']['Inference'] is False:
     lr_monitor = LearningRateMonitor(logging_interval='step')
     checkpoint_callback = ModelCheckpoint(dirpath=config['MODEL']['Model_Save_Path'],
                                           monitor=config['CHECKPOINT']['Monitor'],
-                                          filename=name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' + config['CHECKPOINT']['Monitor'] + ':.2f}',
+                                          filename=name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' +
+                                                   config['CHECKPOINT']['Monitor'] + ':.2f}',
                                           save_top_k=1,
                                           mode=config['CHECKPOINT']['Mode'])
 
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
 # Load coords_file
-coords_file = LoadFileParameter(id_dict, config['DATA']['SVS_Folder'])
+coords_file = LoadFileParameter(config, ids)
 
 # Augment data on the training set
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
-        ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
+        ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
+            'NORMALIZATION'] else None,
         transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.ToPILImage(),
-        transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'], magnitude=config['AUGMENTATION']['Rand_Magnitude']),  # this only operates on 8-bit images (not normalised float32 tensors)
+        transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'],
+                               magnitude=config['AUGMENTATION']['Rand_Magnitude']),
+        # this only operates on 8-bit images (not normalised float32 tensors)
         transforms.ToTensor(),  # this also normalizes to [0,1].,
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
@@ -65,7 +73,8 @@ else:
     train_transform = transforms.Compose([
         transforms.ToTensor(),  # this also normalizes to [0,1].,
         transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
-        ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
+        ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
+            'NORMALIZATION'] else None,
         transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
@@ -74,7 +83,8 @@ else:
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
     transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
-    ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
+    ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
+        'NORMALIZATION'] else None,
     transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
@@ -102,7 +112,6 @@ else:  # prediction does not use train/validation sets, only directly the datalo
                       num_workers=10,
                       shuffle=False,
                       pin_memory=True)
-
 
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 # From paper: Class-balanced Loss Based on Effective Number of Samples
@@ -141,7 +150,5 @@ else:  # infer
 
     for i in range(predicted_classes_prob.shape[1]):
         print('Adding the column ' + '"prob_' + config['DATA']['Label_Name'] + str(i) + '"...')
-        SaveFileParameter(id_dict, coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
+        SaveFileParameter(config, coords_file, predicted_classes_prob[:, i],
                           'prob_' + config['DATA']['Label_Name'] + str(i))
-
-

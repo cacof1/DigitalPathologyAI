@@ -6,18 +6,17 @@ import sys
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from Utils import OmeroTools
+from Utils import OmeroTools, npyExportTools
 from PIL import Image
 from tqdm import tqdm
 import torch
 from WSI_Viewer import generate_overlay
-from Dataloader.Dataloader import QueryFromServer, Synchronize
+from Dataloader.Dataloader import gather_WSI_npy_indexes
 import copy
 
 sys.path.append('../')
 import toml
 from QA.Normalization.Colour import ColourNorm
-import PatchExportTools
 from mpire import WorkerPool
 import datetime
 from sys import platform
@@ -171,18 +170,15 @@ class PreProcessor:
         self.config = copy.deepcopy(config)
 
         # Robustness to various forms of Vis
-        if isinstance(config['DATA']['Vis'], list):
-            if len(config['DATA']['Vis']) > 1:
-                print('Unsupported number of visibility levels, using the first one: {}'.format(
-                    self.config['DATA']['Vis']))
-            self.config['DATA']['Vis'] = copy.copy(config['DATA']['Vis'][0])
+        self.vis = copy.copy(config['DATA']['Vis'][0])
+        if len(config['DATA']['Vis']) > 1:
+            print('Unsupported number of visibility levels, using the first one: {}'.format(self.vis))
 
         # Robustness to various forms of Patch_Size
-        if isinstance(config['DATA']['Patch_Size'], list):
-            if len(config['DATA']['Patch_Size']) > 1:
-                print('Unsupported number of patch sizes, using the first one: {}'.format(
-                    self.config['DATA']['Patch_Size']))
-            self.config['DATA']['Patch_Size'] = copy.copy(config['DATA']['Patch_Size'][0])
+        self.patch_size = copy.copy(config['DATA']['Patch_Size'][0])
+        if len(config['DATA']['Patch_Size']) > 1:
+            print('Unsupported number of patch sizes, using the first one: {}'.format(self.patch_size))
+
 
         if 'Colour_Norm_File' in config['NORMALIZATION']:
             self.colour_normaliser = ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File'])
@@ -205,18 +201,17 @@ class PreProcessor:
         else:
             self.omero_login = None
 
-        # Identify session type
-        self.config['INTERNAL'] = {'preprocessing_session': False}
-        if config['DATA']['Label_Name'].lower() == 'preprocessing_label':
-            print('Assuming pre-processing session.')
-            self.config['INTERNAL']['preprocessing_session'] = True
-        else:
-            print('Assuming conventional session.')
-
         # Tag the session
         e = datetime.datetime.now()
+        self.config['INTERNAL'] = dict()
         self.config['INTERNAL']['timestamp'] = "{}_{}_{}, {}h{}m{}s.".format(e.day, e.month, e.year, e.hour,
                                                                              e.minute, e.second)
+
+        # For each WSI to be processed, contains slice id
+        self.ids = None
+
+        # For each WSI to be processed, contains the index of the dataset to write to in the .npy file
+        self.WSI_processing_index = None
 
     # basic functions designed for AnnotationsToNPY
     # ----------------------------------------------------------------------------------------------------------------
@@ -228,9 +223,9 @@ class PreProcessor:
 
     def Create_Contours_Overlay_QA(self, idx, df_export):
 
-        patch_size = self.config['DATA']['Patch_Size']
+        patch_size = self.patch_size
         all_possible_labels = np.array(list(set(self.config['PREPROCESSING_MAPPING']['contour_id'].values)))
-        WSI_object = self.openslide_read_WSI(self.config['CRITERIA']['id'][idx])
+        WSI_object = self.openslide_read_WSI(self.ids[idx])
         vis_level_view = len(WSI_object.level_dimensions) - 1  # always the lowest res vis level
         N_classes = len(all_possible_labels)
 
@@ -273,12 +268,12 @@ class PreProcessor:
         # heatmap_PIL.show()
 
         # Export image to QA_path to evaluate the quality of the pre-processing.
-        ID = self.config['CRITERIA']['id'][idx]
+        ID = self.ids[idx]
         img_pth = os.path.join(self.QA_folder, ID + '_patch_' + str(patch_size[0]) + '.pdf')
         heatmap_PIL.save(img_pth, 'pdf')
 
         print('QA overlay exported at: {}'.format(
-            os.path.join(self.QA_folder, ID + '_patch_' + str(self.config['DATA']['Patch_Size'][0]) + '.pdf')))
+            os.path.join(self.QA_folder, ID + '_patch_' + str(self.patch_size[0]) + '.pdf')))
 
     def organise_contours(self):
 
@@ -286,12 +281,12 @@ class PreProcessor:
         contour_files = []
 
         # Create contours first. This will download all contours.
-        OmeroTools.download_omero_ROIs(download_path=self.contours_folder, ids=self.config['CRITERIA']['id'],
+        OmeroTools.download_omero_ROIs(download_path=self.contours_folder, ids=self.ids,
                                        **self.omero_login)
         print('--------------------------------------------------------------------------------')
 
         # Then, load the local contours (same if contour_type is local or omero)
-        for ID in self.config['CRITERIA']['id']:
+        for ID in self.ids:
             contour_files.append(
                 os.path.join(self.contours_folder, ID + '.svs [0]_roi_measurements.csv'))
 
@@ -373,124 +368,6 @@ class PreProcessor:
 
         return contour_files
 
-    def gather_WSI_npy_indexes(self, overwrite=True, verbose=True):
-
-        self.config['INTERNAL']['WSI_processing_index'] = []
-        processing_flag = []
-        for idx in range(len(self.config['CRITERIA']['id'])):
-            ID = self.config['CRITERIA']['id'][idx]
-            patch_npy_export_filename = os.path.join(self.patches_folder, ID + '.npy')
-
-            # Does the .npy file exist?
-            if not os.path.exists(patch_npy_export_filename):
-
-                self.config['INTERNAL']['WSI_processing_index'].append(0)
-                processing_flag.append(True)
-                if verbose:
-                    print('WSI {}.npy: file does not exist, creating new.'.format(ID))
-
-            else:
-
-                # Is this a preprocessing session?
-                if self.config['INTERNAL']['preprocessing_session']:
-
-                    # Does the WSI npy have processing which match criteria in the config file?
-                    datasets = list(np.load(patch_npy_export_filename, allow_pickle=True))
-
-                    # datasets is a list, where each element contains a dictionary which holds the following two keys:
-                    # header: the config file (also a dictionary) used to generate a preprocessing/analysis
-                    # dataframe: a dataframe containing the WSI information obtained after processing using the config
-                    # file of the above header.
-
-                    # Next step is to find out if the current processing session already exists. It is assumed that,
-                    # for pre-processing, the session already exists if the config file is the same, with the exception
-                    # of the [CRITERIA], [VERBOSE], [CONTOURS], [OMERO] and [INTERNAL] fields. This comparison is
-                    # achieved below.
-
-                    header_key_blacklist = ['CRITERIA', 'VERBOSE', 'CONTOURS', 'OMERO', 'INTERNAL']
-                    cur_reduced_header = PatchExportTools.remove_dict_keys(self.config, header_key_blacklist)
-                    reduced_existing_headers = [
-                        PatchExportTools.remove_dict_keys(dataset['header'], header_key_blacklist) for dataset in
-                        datasets]
-                    matching_header = [PatchExportTools.compare_dicts(cur_reduced_header, h) for h in
-                                       reduced_existing_headers]
-                    match = np.argwhere(matching_header)
-
-                    if len(match) == 0:  # then no, and dataset will be processed
-                        self.config['INTERNAL']['WSI_processing_index'].append(len(datasets))
-                        processing_flag.append(True)
-                        if verbose:
-                            print('WSI {}.npy: preprocessing session, file exists, will append new dataset.'.format(ID))
-
-                    elif len(match) == 1:
-
-                        self.config['INTERNAL']['WSI_processing_index'].append(match[0][0])
-                        # Does the user want to override the existing dataset?
-                        if overwrite:
-                            processing_flag.append(True)
-                            if verbose:
-                                print(
-                                    'WSI {}.npy: preprocessing session, file and dataset exists, will overwrite existing dataset.'.format(
-                                        ID))
-                        else:
-                            processing_flag.append(False)
-                            if verbose:
-                                print(
-                                    'WSI {}.npy: preprocessing session, file and dataset exists, will not overwrite existing dataset.'.format(
-                                        ID))
-
-                else:  # conventional training session
-
-                    # Next step is to find out if the current processing session already exists. It is assumed that,
-                    # for conventional training, the session already exists if the following configuration file
-                    # elements are the same: the colour normalization file, the patch size, and the visibility level.
-                    # The comparison is achieved below.
-
-                    datasets = list(np.load(patch_npy_export_filename, allow_pickle=True))
-                    inner_keys = ['NORMALIZATION', 'DATA', 'DATA']
-                    outer_keys = ['Colour_Norm_File', 'Patch_Size', 'Vis']
-                    mask = np.full(len(datasets), True)
-                    for kk in range(len(inner_keys)):
-                        datasets_vals = [dataset['header'][inner_keys[kk]][outer_keys[kk]] for dataset in datasets]
-                        cur_dataset_vals = self.config[inner_keys[kk]][outer_keys[kk]]
-                        mask = mask & [cur_dataset_vals == dataset_val for dataset_val in datasets_vals]
-
-                    formatted_indexes = [list(np.where(mask)[0]) if any(mask) else []]
-
-                    if len(formatted_indexes) == 0:  # file does not match, so create it
-                        self.config['INTERNAL']['WSI_processing_index'].append(len(datasets))
-                        processing_flag.append(True)
-                        if verbose:
-                            print('WSI {}.npy: conventional session, file exists, will append new dataset.'.format(ID))
-
-                    else:  # there is at least one file
-
-                        # Is the file unique?
-                        ovwr = ''
-                        if len(formatted_indexes) == 1:  # yes
-                            self.config['INTERNAL']['WSI_processing_index'].append(formatted_indexes[0])
-                            if verbose:
-                                print('WSI {}.npy: conventional session, file exists,'.format(ID), end='')
-                                ovwr = 'existing dataset'
-                        else:  # no, then use the one with the best performance = the lowest validation loss
-                            datasets_loss = [dataset['header']['PERFORMANCE']['val_loss'] for dataset in datasets]
-                            best_index = np.argmin(datasets_loss)[0][0]
-                            self.config['INTERNAL']['WSI_processing_index'].append(best_index)
-                            if verbose:
-                                print('WSI {}.npy: conventional session, file exists,'.format(ID), end='')
-                                ovwr = 'existing dataset with lowest validation loss'
-
-                        # Finally, does the file include pre-processing labels?
-                        if 'preprocessing_label' in datasets[self.config['INTERNAL']['WSI_processing_index']][
-                            'dataframe'].columns:
-                            processing_flag.append(False)
-                            print(" will use {} without re-processing.".format(ovwr))
-                        else:
-                            processing_flag.append(True)
-                            print(" will overwrite {}.".format(ovwr))
-
-        return processing_flag
-
     def contours_processing(self, contour_files, idx):
 
         # Process the contours of the idx^th WSI using the contours from contour_files. If there are no contour files,
@@ -500,7 +377,7 @@ class PreProcessor:
         coord_x = []
         coord_y = []
         label = []
-        ID = self.config['CRITERIA']['id'][idx]
+        ID = self.ids[idx]
 
         #  load contours if existing, or process entire WSI
         WSI_object = self.openslide_read_WSI(ID)
@@ -530,7 +407,7 @@ class PreProcessor:
 
                 xmax, ymax = WSI_object.level_dimensions[0]
                 edges_to_test = lims_to_vec(xmin=0, xmax=xmax, ymin=0, ymax=ymax,
-                                            patch_size=self.config['DATA']['Patch_Size'])
+                                            patch_size=self.patch_size)
                 coord_x.append(edges_to_test[:, 0])
                 coord_y.append(edges_to_test[:, 1])
                 label.append(np.ones(len(edges_to_test), dtype=int) * -1)  # should only be a single value.
@@ -556,15 +433,13 @@ class PreProcessor:
                     # To make sure we do not end up with overlapping contours at the end, round xmin, xmax, ymin,
                     # ymax to the nearest multiple of patch_size.
                     xmin = int(
-                        np.floor(xmin / self.config['DATA']['Patch_Size'][0]) * self.config['DATA']['Patch_Size'][
-                            0])
+                        np.floor(xmin / self.patch_size[0]) * self.patch_size[0])
                     ymin = int(
-                        np.floor(ymin / self.config['DATA']['Patch_Size'][1]) * self.config['DATA']['Patch_Size'][
-                            1])
+                        np.floor(ymin / self.patch_size[1]) * self.patch_size[1])
                     xmax = int(
-                        np.ceil(xmax / self.config['DATA']['Patch_Size'][0]) * self.config['DATA']['Patch_Size'][0])
+                        np.ceil(xmax / self.patch_size[0]) * self.patch_size[0])
                     ymax = int(
-                        np.ceil(ymax / self.config['DATA']['Patch_Size'][1]) * self.config['DATA']['Patch_Size'][1])
+                        np.ceil(ymax / self.patch_size[1]) * self.patch_size[1])
 
                 else:
                     contour_label = [-1]  # -1 will mean, by definition, that there are no contours assigned.
@@ -598,7 +473,7 @@ class PreProcessor:
 
                 # --------------------------------------------------------------------------------------------
                 edges_to_test = lims_to_vec(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax,
-                                            patch_size=self.config['DATA']['Patch_Size'])
+                                            patch_size=self.patch_size)
 
                 # Remove BG in concerned ROIs
                 remove_BG_cond = [ROI_name.lower() in remove_bg_contour.lower() for remove_bg_contour in
@@ -610,7 +485,7 @@ class PreProcessor:
 
                 # Loop over all tiles and see if they are members of the current ROI. Do in // if you have many
                 # tiles, otherwise the overhead cost is not worth it
-                dataset = (WSI_object, self.config['DATA']['Patch_Size'], self.colour_normaliser,
+                dataset = (WSI_object, self.patch_size, self.colour_normaliser,
                            remove_BG, contours_idx_within_ROI, df, coords)
 
                 if len(edges_to_test) > 1500 and (
@@ -624,7 +499,7 @@ class PreProcessor:
 
                 else:
                     membership = np.full(len(edges_to_test), False)
-                    for ei in tqdm(range(len(edges_to_test))):
+                    for ei in tqdm(range(len(edges_to_test)), desc="Background estimation of ID #{}...".format(ID)):
                         membership[ei] = tile_membership_contour(dataset, edges_to_test[ei, :])
 
                 coord_x.append(edges_to_test[membership, 0])
@@ -645,7 +520,7 @@ class PreProcessor:
 
     def labels_processing(self, idx):
 
-        ID = self.config['CRITERIA']['id'][idx]
+        ID = self.ids[idx]
 
         # 1. Load WSI
         WSI_object = self.openslide_read_WSI(ID)
@@ -657,15 +532,22 @@ class PreProcessor:
         # 3. Identify non-background patches
         edges_to_test = lims_to_vec(xmin=0, xmax=WSI_object.level_dimensions[0][0], ymin=0,
                                     ymax=WSI_object.level_dimensions[0][1],
-                                    patch_size=self.config['DATA']['Patch_Size'])
-        dataset = (WSI_object, self.config['DATA']['Patch_Size'],
+                                    patch_size=self.patch_size)
+        dataset = (WSI_object, self.patch_size,
                    self.colour_normaliser, 0.86)  # for // processing
         # TODO: for now, background threshold value is hard coded to 0.86, following literature values
 
-        with WorkerPool(n_jobs=10, start_method='fork') as pool:
-            pool.set_shared_objects(dataset)
-            background_fractions = pool.map(patch_background_fraction, list(edges_to_test), progress_bar=True)
-        background_fractions = np.asarray(background_fractions)
+        if platform != "darwin":  # fail safe - parallel computing not working on M1 macs for now
+            with WorkerPool(n_jobs=10, start_method='fork') as pool:
+                pool.set_shared_objects(dataset)
+                background_fractions = pool.map(patch_background_fraction, list(edges_to_test), progress_bar=True)
+            background_fractions = np.asarray(background_fractions)
+
+        else:
+            background_fractions = np.zeros(len(edges_to_test))
+            for ii in tqdm(range(len(edges_to_test))):
+                background_fractions[ii] = patch_background_fraction(dataset, edges_to_test[ii, :])
+
         valid_patches = background_fractions < 0.5
 
         # 4. Create dataframe
@@ -680,9 +562,9 @@ class PreProcessor:
 
     def export_to_npy(self, idx, cur_dataset):
 
-        n = self.config['INTERNAL']['WSI_processing_index'][idx]
-        patch_npy_export_filename = os.path.join(self.patches_folder, self.config['CRITERIA']['id'][idx] + '.npy')
-        cid = self.config['CRITERIA']['id'][idx]
+        n = self.WSI_processing_index[idx]
+        cid = self.ids[idx]
+        patch_npy_export_filename = os.path.join(self.patches_folder, cid + '.npy')
 
         if os.path.exists(patch_npy_export_filename):  # either append or replace
 
@@ -704,41 +586,34 @@ class PreProcessor:
             print('WSI {}.npy: new file created and added current dataset.'.format(cid))
 
         # Also output an excel sheet of the svs. For debugging purposes.
-        PatchExportTools.decode_npy(patch_npy_export_filename)
+        npyExportTools.decode_npy(patch_npy_export_filename)
 
     # ----------------------------------------------------------------------------------------------------------------
-    def AnnotationsToNPY(self, overwrite=True):
+    def AnnotationsToNPY(self, ids, overwrite=True):
+
+        self.ids = ids
 
         # --------------
-        # 1. Download all relevant files based on the configuration file
-        datasets = QueryFromServer(self.config)
-        Synchronize(self.config, datasets)
-        self.config['CRITERIA']['id'] = [d.split('.svs')[0] for d in datasets.Name.tolist()]  # For easy processing
-        # --------------
-
-        # --------------
-        # 2. Download and organise contours, if you are currently working with contours.
-        if 'CONTOURS' in self.config:
+        # 1. Download and organise contours, if you are currently working with contours.
+        if self.config['CONTOURS']:
             contour_files = self.organise_contours()
         else:
             contour_files = []
         # --------------
 
         # --------------
-        # 3. Gather the index from the .npy file that will be used to store the results of the current pre-processing.
-        # (this should be scored in self.config['INTERNAL']['WSI_dataset_index']).
-        # also a preprocessing flag which is a list!
-        processing_flag = self.gather_WSI_npy_indexes(overwrite, verbose=True)
+        # 2. Gather the index from the .npy file that will be used to store the results of the current pre-processing.
+        self.WSI_processing_index, processing_flag = gather_WSI_npy_indexes(self.config, self.ids, overwrite, verbose=True)
         # --------------
 
         # --------------
-        # 4 and 5, performed WSI-wise: process the dataset and export to npy.
-        for idx in range(len(self.config['CRITERIA']['id'])):  # WSI wise
+        # 3 and 4, performed WSI-wise: process the dataset and export to npy.
+        for idx in range(len(self.ids)):  # WSI wise
 
             if processing_flag[idx]:
 
                 # 4. Process the dataset if it has contours or not
-                if 'CONTOURS' in self.config:
+                if self.config['CONTOURS']:
                     cur_dataset = self.contours_processing(contour_files, idx)
                     if contour_files:
                         self.Create_Contours_Overlay_QA(idx, cur_dataset['dataframe'])
@@ -755,7 +630,7 @@ class PreProcessor:
 
 
 if __name__ == "__main__":
-
     config = toml.load('./Configs/example_config.ini')
     preprocessor = PreProcessor(config)
-    preprocessor.AnnotationsToNPY()
+
+

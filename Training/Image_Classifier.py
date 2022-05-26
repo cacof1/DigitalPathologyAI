@@ -1,32 +1,37 @@
 import os
-import sys
-import pytorch_lightning as pl
+from Dataloader.Dataloader import *
+from preprocessing.PreProcessingTools import PreProcessor
 import toml
-import torch
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataModule, DataGenerator, QueryFromServer, \
-    Synchronize
-from Model.ConvNeXt import ConvNeXt
-from Model.ConvNet import ConvNet
-from Model.Transformer import ViT
-from QA.Normalization.Colour import ColourNorm
 from Utils import GetInfo
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+import pytorch_lightning as pl
+from torchvision import transforms
+import torch
+from torch.utils.data import DataLoader
+from QA.Normalization.Colour import ColourNorm
+from Model.ConvNet import ConvNet
 
 # Load configuration file and name
-config = toml.load(sys.argv[1])
+# config = toml.load(sys.argv[1])
+config = toml.load('/Users/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/sarcoma/trainer_sarcoma_convnet.ini')  # example of config file
 
 ########################################################################################################################
-#                                      1. Pre-processing: create npy files
+# 1. Download all relevant files based on the configuration file
+
+datasets = QueryFromServer(config)
+Synchronize(config, datasets)
+ids = [d.split('.svs')[0] for d in datasets.Name.tolist()]  # For easy processing
+
+########################################################################################################################
+# 2. Pre-processing: create npy files
+
 preprocessor = PreProcessor(config)
-preprocessor.AnnotationsToNPY(overwrite=False)
-id_dict = dict(zip(preprocessor.config['CRITERIA']['id_internal'], preprocessor.config['INTERNAL']['WSI_processing_index']))
+preprocessor.AnnotationsToNPY(ids, overwrite=False)
 del preprocessor
 
 ########################################################################################################################
-#                                                2. Model training
+# 3. Model training
 
 name = GetInfo.format_model_name(config)
 
@@ -48,7 +53,7 @@ if config['MODEL']['Inference'] is False:
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
 # Load coords_file
-coords_file = LoadFileParameter(id_dict, config['DATA']['SVS_Folder'])
+coords_file = LoadFileParameter(config, ids)
 
 # TODO: mask coords_file using pre-processing data to identify tumour patches.
 #coords_file = coords_file[coords_file["tumour_pred_label_1"] > coords_file["tumour_pred_label_0"]]
@@ -93,7 +98,7 @@ if config['MODEL']['Inference'] is False:  # train
         train_size=config['DATA']['Train_Size'],
         val_size=config['DATA']['Val_Size'],
         inference=False,
-        dim_list=config['DATA']['Dim'],
+        dim_list=config['DATA']['Patch_Size'],
         vis_list=config['DATA']['Vis'],
         n_per_sample=config['DATA']['N_Per_Sample'],
         target=config['DATA']['Label_Name'],
@@ -162,7 +167,7 @@ else:  # infer
 
     for i in range(predicted_classes_prob.shape[1]):
         print('Adding the column ' + '"prob_' + config['DATA']['Label_Name'] + str(i) + '"...')
-        SaveFileParameter(id_dict, coords_file, config['DATA']['Patches_Folder'], predicted_classes_prob[:, i],
+        SaveFileParameter(config, coords_file, predicted_classes_prob[:, i],
                           'prob_' + config['DATA']['Label_Name'] + str(i))
 
 

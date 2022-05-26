@@ -32,7 +32,7 @@ def adjust_df_to_excel_columns(writer, df, sheet):
     for column in df:
         column_length = max(df[column].astype(str).map(len).max(), len(column))
         col_idx = df.columns.get_loc(column)
-        print(column)
+        #print(column, col_idx+1, column_length)  # debugging purposes
         writer.sheets[sheet].set_column(col_idx+1, col_idx+1, column_length)  # +1 to account for index
 
     # dims = {}
