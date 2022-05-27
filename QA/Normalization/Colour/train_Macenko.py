@@ -4,7 +4,7 @@ from typing import Union
 import torch.nn.functional as F
 import ColourNorm
 import numpy as np
-from wsi_core.WholeSlideImage import WholeSlideImage
+import openslide
 from matplotlib import pyplot as plt
 import os
 import glob
@@ -24,19 +24,19 @@ vis = 0
 
 search_WSI_query = os.path.join(bp, '**', id_train + '.svs')
 patient_id_train = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
-wsi_object_train = WholeSlideImage(patient_id_train)
-start = (int(wsi_object_train.level_dim[vis][0]/3), int(wsi_object_train.level_dim[vis][1]/3))
-#size = wsi_object_train.level_dim[vis]
+wsi_object_train = openslide.open_slide(patient_id_train)
+start = (int(wsi_object_train.level_dimensions[vis][0]/3), int(wsi_object_train.level_dimensions[vis][1]/3))
+# size = wsi_object_train.level_dimensions[vis]
 size = (2000, 2000)
-img_train = np.array(wsi_object_train.wsi.read_region(start, vis, size).convert("RGB"))
+img_train = np.array(wsi_object_train.read_region(start, vis, size).convert("RGB"))
 
 search_WSI_query = os.path.join(bp, '**', id_test + '.svs')
 patient_id_test = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
-wsi_object_test = WholeSlideImage(patient_id_test)
-start = (int(wsi_object_test.level_dim[vis][0]/3), int(wsi_object_test.level_dim[vis][1]/3))
+wsi_object_test = openslide.open_slide(patient_id_test)
+start = (int(wsi_object_test.level_dimensions[vis][0]/3), int(wsi_object_test.level_dimensions[vis][1]/3))
 size = (256, 256)
 #size = wsi_object_test.level_dim[vis]
-img_test = np.array(wsi_object_test.wsi.read_region(start, vis, size).convert("RGB"))
+img_test = np.array(wsi_object_test.read_region(start, vis, size).convert("RGB"))
 
 # Train
 MacenkoNormaliser = ColourNorm.Macenko(alpha=alpha, beta=beta, Io=Io)

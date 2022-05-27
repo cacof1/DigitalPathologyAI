@@ -499,7 +499,7 @@ class PreProcessor:
 
                 else:
                     membership = np.full(len(edges_to_test), False)
-                    for ei in tqdm(range(len(edges_to_test)), desc="Background estimation of ID #{}...".format(ID)):
+                    for ei in tqdm(range(len(edges_to_test))):
                         membership[ei] = tile_membership_contour(dataset, edges_to_test[ei, :])
 
                 coord_x.append(edges_to_test[membership, 0])
@@ -512,30 +512,26 @@ class PreProcessor:
         coord_y = [item for sublist in coord_y for item in sublist]
         label = [item for sublist in label for item in sublist]
         df_export = pd.DataFrame(
-            {'coords_x': coord_x, 'coords_y': coord_y, self.config['DATA']['Label_Name']: label})
+            {'coords_x': coord_x, 'coords_y': coord_y, 'tissue_type': label})
 
         cur_dataset = {'header': self.config, 'dataframe': df_export}
 
         return cur_dataset
 
-    def labels_processing(self, idx):
+    def inference_preprocessing(self, idx):
+
+        # Creates npy and identifies non-background tiles.
 
         ID = self.ids[idx]
 
         # 1. Load WSI
         WSI_object = self.openslide_read_WSI(ID)
 
-        # 2. Get label
-        WSI_label = -1  # TODO: add code that gets label from OMERO. For now, set value to -1 as a dummy.
-        # Will need to use self.config['DATA']['Label_Name'] to gather the relevant key/value from Omero WSIs.
-
-        # 3. Identify non-background patches
+        # 2. Identify non-background patches
         edges_to_test = lims_to_vec(xmin=0, xmax=WSI_object.level_dimensions[0][0], ymin=0,
                                     ymax=WSI_object.level_dimensions[0][1],
                                     patch_size=self.patch_size)
-        dataset = (WSI_object, self.patch_size,
-                   self.colour_normaliser, 0.86)  # for // processing
-        # TODO: for now, background threshold value is hard coded to 0.86, following literature values
+        dataset = (WSI_object, self.patch_size, self.colour_normaliser, 0.86)  # for // processing
 
         if platform != "darwin":  # fail safe - parallel computing not working on M1 macs for now
             with WorkerPool(n_jobs=10, start_method='fork') as pool:
@@ -545,16 +541,15 @@ class PreProcessor:
 
         else:
             background_fractions = np.zeros(len(edges_to_test))
-            for ii in tqdm(range(len(edges_to_test))):
+            for ii in tqdm(range(len(edges_to_test)), desc="Background estimation of ID #{}...".format(ID)):
                 background_fractions[ii] = patch_background_fraction(dataset, edges_to_test[ii, :])
 
         valid_patches = background_fractions < 0.5
 
-        # 4. Create dataframe
+        # 3. Create dataframe
         coord_x = edges_to_test[valid_patches, 0]
         coord_y = edges_to_test[valid_patches, 1]
-        label = np.ones(np.sum(valid_patches), dtype=int) * WSI_label
-        df_out = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y, self.config['DATA']['Label_Name']: label})
+        df_out = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y})
 
         cur_dataset = {'header': self.config, 'dataframe': df_out}
 
@@ -612,13 +607,13 @@ class PreProcessor:
 
             if processing_flag[idx]:
 
-                # 4. Process the dataset if it has contours or not
-                if self.config['CONTOURS']:
+                # 4. Process the dataset separately if contour+training vs inference
+                if self.config['CONTOURS'] and not self.config['MODEL']['Inference']:
                     cur_dataset = self.contours_processing(contour_files, idx)
                     if contour_files:
                         self.Create_Contours_Overlay_QA(idx, cur_dataset['dataframe'])
-                else:
-                    cur_dataset = self.labels_processing(idx)
+                if self.config['MODEL']['Inference']:
+                    cur_dataset = self.inference_preprocessing(idx)
 
                 # 5. Export to npy.
                 self.export_to_npy(idx, cur_dataset)
