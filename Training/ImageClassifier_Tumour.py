@@ -12,8 +12,9 @@ from torch.utils.data import DataLoader
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 
-# config = toml.load(sys.argv[1])
-config = toml.load('/Users/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/trainer_tumour_convnet.ini')  # example of config file
+config = toml.load(sys.argv[1])
+#config = toml.load('/home/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/trainer_tumour_convnet.ini')  # learn
+# config = toml.load('/home/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/infer_tumour_convnet_5classes.ini')  # infer
 
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
@@ -116,9 +117,9 @@ else:  # prediction does not use train/validation sets, only directly the datalo
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 # From paper: Class-balanced Loss Based on Effective Number of Samples
 if config['MODEL']['Inference']:
-    config['MODEL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
+    config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 if config['MODEL']['Inference'] is False:
-    config['MODEL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
+    config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
     npatches_per_class = GetInfo.ShowTrainValTestInfo(data, config)
 
     # The following will be used in an upcoming release to add weights to labels. This will be packaged in a function:
@@ -127,8 +128,9 @@ if config['MODEL']['Inference'] is False:
     # effective_samples = (1 - beta**npatches_per_class)/(1-beta)
     # raw_scores = 1 / effective_samples
     # w = config['DATA']['N_Classes'] * raw_scores / sum(raw_scores)
-    # config['MODEL']['weights'] = torch.tensor(w).float()
-    # print(config['MODEL']['weights'])
+    # config['INTERNAL']['weights'] = torch.tensor(w).float()
+    # print(config['INTERNAL']['weights'])
+    # note: all the above could be moved directly into the ConvNet model.
 
 # Load model and train/infer
 if config['MODEL']['Inference'] is False:  # train

@@ -26,7 +26,7 @@ class ConvNet(pl.LightningModule):
         self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["Loss_Function"])()
 
         if self.config['MODEL']['Loss_Function'] == 'CrossEntropyLoss':  # there is a bug currently. Quick fix...
-            self.loss_fcn = torch.nn.CrossEntropyLoss(weight=config['MODEL']['weights'],
+            self.loss_fcn = torch.nn.CrossEntropyLoss(weight=config['INTERNAL']['weights'],
                                                       label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
 
         self.activation = getattr(torch.nn, self.config["MODEL"]["Activation"])()

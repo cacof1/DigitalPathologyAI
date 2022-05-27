@@ -103,7 +103,7 @@ def gather_WSI_npy_indexes(config, ids, overwrite=True, verbose=False):
 
     # Identify session type
     preprocessing_session = False
-    if config['DATA']['Label_Name'].lower() == 'preprocessing_label':
+    if config['DATA']['Label_Name'].lower() == 'tissue_type':
         if verbose:
             print('Assuming pre-processing session.')
         preprocessing_session = True
@@ -210,7 +210,7 @@ def gather_WSI_npy_indexes(config, ids, overwrite=True, verbose=False):
                             message = 'existing dataset with lowest validation loss'
 
                     # Finally, does the file include pre-processing labels, or have you asked for no overwriting?
-                    if ('preprocessing_label' in datasets[WSI_processing_index[-1]]['dataframe'].columns) or (not overwrite):
+                    if ('tissue_type' in datasets[WSI_processing_index[-1]]['dataframe'].columns) or (not overwrite):
                         processing_flag.append(False)
                         if verbose:
                             print(" will use {} without re-processing.".format(message))
@@ -254,7 +254,7 @@ def LoadFileParameter(config, ids):
 def SaveFileParameter(config, df, column_to_add, label_to_add):
 
     ids = df.file_id.unique()  # Gather list of ids you processed
-    WSI_processing_index, _ = gather_WSI_npy_indexes(config, ids)
+    WSI_processing_index, _ = gather_WSI_npy_indexes(config, ids, overwrite=True, verbose=False)
     id_dict = dict(zip(ids, WSI_processing_index))  # set in dict to use in df loop below
     patch_folder = os.path.join(config['DATA']['SVS_Folder'], 'patches')
     df[label_to_add] = pd.Series(column_to_add, index=df.index)
@@ -265,6 +265,9 @@ def SaveFileParameter(config, df, column_to_add, label_to_add):
         datasets = np.load(npy_file_path, allow_pickle=True)
         datasets[id_dict[file_id]]['dataframe'] = df_split.copy()
         np.save(npy_file_path, datasets)
+
+        # Also output an excel sheet of the svs. For debugging purposes.
+        npyExportTools.decode_npy(npy_file_path)
 
 
 def QueryFromServer(config, **kwargs):
@@ -323,10 +326,10 @@ def Synchronize(config, df):
 
                 print("File size doesn't match, redownloading")
                 os.remove(filename)
-                download_image(image['id'], config['DATA']['Folder'], config['OMERO']['User'], config['OMERO']['Host'],
+                download_image(image['id'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'],
                                config['OMERO']['Pw'])
 
         else:  ## Doesn't exist
             print("Doesn't exist")
-            download_image(image['id'], config['DATA']['Folder'], config['OMERO']['User'], config['OMERO']['Host'],
+            download_image(image['id'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'],
                            config['OMERO']['Pw'])

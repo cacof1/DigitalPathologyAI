@@ -107,3 +107,21 @@ for project in conn.listProjects():
                     print("No change change in kv")
 
 conn.close()
+
+
+def remove_all_annotations(conn):
+
+    # quick function if you want to remove all annotations and start from scratch.
+
+    for project in conn.listProjects():
+
+        print_obj(project)
+
+        for dataset in project.listChildren():
+            print_obj(dataset, 2)
+            dataset_id = dataset.getId()
+
+            for image in conn.getObjects('Image', opts={'dataset': dataset_id}):
+                remove_map_annotations(conn, image)
+
+    conn.close()

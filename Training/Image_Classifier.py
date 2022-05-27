@@ -116,9 +116,9 @@ else:  # prediction does not use train/validation sets, only directly the datalo
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 # From paper: Class-balanced Loss Based on Effective Number of Samples
 if config['MODEL']['Inference']:
-    config['MODEL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
+    config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 if config['MODEL']['Inference'] is False:
-    config['MODEL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
+    config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
     npatches_per_class = GetInfo.ShowTrainValTestInfo(data, config)
 
     # The following will be used in an upcoming release to add weights to labels. This will be packaged in a function:
@@ -127,8 +127,8 @@ if config['MODEL']['Inference'] is False:
     # effective_samples = (1 - beta**npatches_per_class)/(1-beta)
     # raw_scores = 1 / effective_samples
     # w = config['DATA']['N_Classes'] * raw_scores / sum(raw_scores)
-    # config['MODEL']['weights'] = torch.tensor(w).float()
-    # print(config['MODEL']['weights'])
+    # config['INTERNAL']['weights'] = torch.tensor(w).float()
+    # print(config['INTERNAL']['weights'])
 
 # Load model and train/infer
 if config['MODEL']['Inference'] is False:  # train
