@@ -13,14 +13,12 @@ import omero
 import itertools
 import Utils.sampling_schemes as sampling_schemes
 from Utils.OmeroTools import *
-from Utils import npyExportTools
+#from Utils import npyExportTools
 from pathlib import Path
-
 
 class DataGenerator(torch.utils.data.Dataset):
 
-    def __init__(self, coords_file, target="tumour_label", dim_list=[(256, 256)], vis_list=[0],
-                 inference=False, transform=None, target_transform=None):
+    def __init__(self, coords_file, target="tumour_label", dim_list=[(256, 256)], vis_list=[0], inference=False, transform=None, target_transform=None):
 
         super().__init__()
         self.transform = transform
@@ -36,7 +34,7 @@ class DataGenerator(torch.utils.data.Dataset):
 
     def __getitem__(self, id):
         # load image
-        wsi_file = openslide.open_slide(self.coords["wsi_path"].iloc[id])
+        wsi_file = openslide.open_slide(self.coords["SVS_PATH"].iloc[id])
 
         data_dict = {}
         for dim in self.dim_list:
@@ -68,11 +66,11 @@ class DataModule(LightningDataModule):
 
         if sampling_scheme.lower() == 'wsi':
             coords_file_sampled = sampling_schemes.sample_N_per_WSI(coords_file, n_per_sample=n_per_sample)
-            svi = np.unique(coords_file_sampled.file_id)
+            svi = np.unique(coords_file_sampled.SVS_PATH)
             np.random.shuffle(svi)
             train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size)
-            coords_file_train = coords_file_sampled[coords_file_sampled.file_id.isin(train_idx)]
-            coords_file_valid = coords_file_sampled[coords_file_sampled.file_id.isin(val_idx)]
+            coords_file_train = coords_file_sampled[coords_file_sampled.SVS_PATH.isin(train_idx)]
+            coords_file_valid = coords_file_sampled[coords_file_sampled.SVS_PATH.isin(val_idx)]
 
         elif sampling_scheme.lower() == 'patch':
             coords_file_sampled = sampling_schemes.sample_N_per_WSI(coords_file, n_per_sample=n_per_sample)
@@ -94,10 +92,15 @@ class DataModule(LightningDataModule):
         return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
 
 
-def gather_WSI_npy_indexes(config, ids, overwrite=True, verbose=False):
+def gather_WSI_npy_indexes(config, npy_file):#, overwrite=True, verbose=False):
+    
+    if(npy_file['header']['BASEMODEL'] == config['BASEMODEL']): return npy_file['coords']
+    else: sys.exit("Can't find a matching header file")
+    return WSI_processing_index, processing_flag
 
+
+    """
     # Locates the index from the .npy file that will be used to store the results of current session.
-
     WSI_processing_index = []
     processing_flag = []
 
@@ -122,7 +125,6 @@ def gather_WSI_npy_indexes(config, ids, overwrite=True, verbose=False):
             processing_flag.append(True)
             if verbose:
                 print('WSI {}.npy: file does not exist, creating new.'.format(ID))
-
         else:
 
             # Is this a preprocessing session?
@@ -218,32 +220,22 @@ def gather_WSI_npy_indexes(config, ids, overwrite=True, verbose=False):
                         processing_flag.append(True)
                         if verbose:
                             print(" will overwrite {}.".format(message))
+    """
 
-    return WSI_processing_index, processing_flag
 
 
-def LoadFileParameter(config, ids):
-
-    WSI_processing_index, _ = gather_WSI_npy_indexes(config, ids, overwrite=False, verbose=False)
-    patch_folder = os.path.join(config['DATA']['SVS_Folder'], 'patches')
-    coords_file = pd.DataFrame()
-
-    for file_nb, file_id in enumerate(ids):
+def LoadFileParameter(config, dataset):
+    patch_folder = Path(config['DATA']['SVS_Folder'], 'patches')
+    coords_file  = pd.DataFrame()
+    for file_nb, file_id in enumerate(dataset['ids']):
         try:
+            npy_file = np.load(dataset['npy_path'][file_nb])
+            coords   = gather_WSI_npy_indexes(config, npy_file)
+            coords   = coords.astype({"coords_y": int, "coords_x": int})
+            coords['SVS_PATH'] = str(dataset['SVS_PATH'])
 
-            npy_file_path = os.path.join(patch_folder, '{}.npy'.format(file_id))
-            search_WSI_query = os.path.join(config['DATA']['SVS_Folder'], '**', str(file_id) + '.svs')
-            WSIPath = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
-            coords = np.load(npy_file_path, allow_pickle=True)[WSI_processing_index[file_nb]]['dataframe']
-            # coords = pd.read_csv(PatchPath, header=0, index_col=0)
-            coords = coords.astype({"coords_y": int, "coords_x": int})
-            coords['file_id'] = file_id
-            coords['wsi_path'] = str(WSIPath)
-
-            if file_nb == 0:
-                coords_file = coords
-            else:
-                coords_file = pd.concat([coords_file, coords])
+            if file_nb == 0: coords_file = coords
+            else: coords_file = pd.concat([coords_file, coords])
         except:
             print('Unable to find patch data for file {}.npy'.format(file_id))
             continue
@@ -254,7 +246,7 @@ def LoadFileParameter(config, ids):
 def SaveFileParameter(config, df, column_to_add, label_to_add):
 
     ids = df.file_id.unique()  # Gather list of ids you processed
-    WSI_processing_index, _ = gather_WSI_npy_indexes(config, ids, overwrite=True, verbose=False)
+    WSI_processing_index = gather_WSI_npy_indexes(config, ids)
     id_dict = dict(zip(ids, WSI_processing_index))  # set in dict to use in df loop below
     patch_folder = os.path.join(config['DATA']['SVS_Folder'], 'patches')
     df[label_to_add] = pd.Series(column_to_add, index=df.index)
@@ -263,7 +255,7 @@ def SaveFileParameter(config, df, column_to_add, label_to_add):
     for file_id, df_split in df.groupby(df.file_id):
         npy_file_path = os.path.join(patch_folder, str(file_id) + ".npy")
         datasets = np.load(npy_file_path, allow_pickle=True)
-        datasets[id_dict[file_id]]['dataframe'] = df_split.copy()
+        datasets[id_dict[file_id]]['coords'] = df_split.copy()
         np.save(npy_file_path, datasets)
 
         # Also output an excel sheet of the svs. For debugging purposes.
@@ -273,15 +265,13 @@ def SaveFileParameter(config, df, column_to_add, label_to_add):
 def QueryFromServer(config, **kwargs):
     print("Querying from Server")
     df = pd.DataFrame()
-
-    conn = connect(config['OMERO']['Host'], config['OMERO']['User'],
-                   config['OMERO']['Pw'])  ## Group not implemented yet
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])  ## Group not implemented yet
     keys = list(config['CRITERIA'].keys())
     value_iter = itertools.product(*config['CRITERIA'].values())  ## Create a joint list with all elements
-
     for value in value_iter:
+
         query_base = """
-        select image.id, image.name, f2.size from 
+        select image.id, image.name, f2.size, a from 
         ImageAnnotationLink ial
         join ial.child a
         join ial.parent image
@@ -291,45 +281,49 @@ def QueryFromServer(config, **kwargs):
         left outer join uf.originalFile as f2     
         """
         query_end = ""
-
         params = omero.sys.ParametersI()
         for nb, temp in enumerate(value):
             query_base += "join a.mapValue mv" + str(nb) + " \n        "
-
-            if nb == 0:
-                query_end += "where (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
-                    nb) + ".value = :value" + str(nb) + ")"
-            else:
-                query_end += " and (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
-                    nb) + ".value = :value" + str(nb) + ")"
-
+            if nb == 0: query_end += "where (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(nb) + ".value = :value" + str(nb) + ")"
+            else:       query_end += " and (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(nb) + ".value = :value" + str(nb) + ")"
             params.addString('key' + str(nb), keys[nb])
             params.addString('value' + str(nb), temp)
 
-        query = query_base + query_end
-        # params.addString('project',str(project.getId()))
-        # result = conn.getQueryService().projection(query, params, conn.SERVICE_OPTS)
-        result = conn.getQueryService().projection(query, params, {"omero.group": "-1"})
-        series = pd.DataFrame([[row[0].val, row[1].val, row[2].val] for row in result], columns=["id", "Name", "Size"])
-        for nb, temp in enumerate(value):
-            series[keys[nb]] = temp
-        df = pd.concat([df, series])
+        query   = query_base + query_end
+        result  = conn.getQueryService().projection(query, params, {"omero.group": "-1"})
+
+        ## Version 1  -- populate only the criteria
+        df_criteria = pd.DataFrame([[row[0].val, Path(row[1].val).stem, row[2].val] for row in result], columns=["id_omero", "id_external", "Size"])                                  
+        for nb, temp in enumerate(value): df_criteria[keys[nb]]   = temp
+
+        ## Version 2 -- populate everything (fragile)
+        """
+        df_criteria = pd.DataFrame()            
+        for row in result: ## Transform the results into a panda dataframe for each found match
+            temp = pd.DataFrame([[row[0].val, row[1].val, row[2].val, *row[3].val.getMapValueAsMap().values()] for row in result],
+                                columns=["id", "Name", "Size",*row[3].val.getMapValueAsMap().keys()]))            
+            df_criteria = pd.concat([df_criteria, temp])                                    
+        """
+        df_criteria['SVS_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], image_id+'.svs') for image_id in df_criteria['id_external']]
+        
+        df = pd.concat([df, df_criteria])
+        
     conn.close()
     return df
 
-
 def Synchronize(config, df):
-    for index, image in df.iterrows():
-        filename = Path(config['DATA']['SVS_Folder'], image['Name'][:-4])  # Remove " [0]" at end of file
-        if filename.is_file():  # Exist
-            if not filename.stat().st_size == image['Size']:  # Corrupted
 
+    for index, image in df.iterrows():
+        filepath = Path(config['DATA']['SVS_Folder'], image['id_external']+'.svs')  # Remove " [0]" at end of file
+
+        if filepath.is_file():  # Exist
+            if not filepath.stat().st_size == image['Size']:  # Corrupted
                 print("File size doesn't match, redownloading")
-                os.remove(filename)
-                download_image(image['id'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'],
-                               config['OMERO']['Pw'])
+                os.remove(filepath)
+                download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
 
         else:  ## Doesn't exist
             print("Doesn't exist")
-            download_image(image['id'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'],
-                           config['OMERO']['Pw'])
+            download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
+
+            

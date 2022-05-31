@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os, sys
 from collections import OrderedDict
+from pathlib import Path
 
 try:
     from omero.api import RoiOptions
@@ -133,72 +134,56 @@ def download_image(imageid, image_dir, user, host, pw):
         cli.invoke(["download", f'Image:{imageid}', image_dir])
 
 
-def download_omero_ROIs(host=None, user=None, pw=None, target_group=None, ids=None,
-                        download_path=None):
+def download_omero_ROIs(config, dataset, download_path=None):
     # Connection to the correct group and identify the correct ID. Use user as target member.
-    conn, target_member_ID = connect_to_member(host, user, pw, target_group, user)
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])  ## Group not implemented yet
 
     # Set ROI options and load projects of target member
     roi_service = conn.getRoiService()
     roi_options = RoiOptions()
     # roi_options.userId = rlong(conn.getUserId())  # if you wanted to specify one user
-    projects = conn.getObjects("Project", opts={'owner': target_member_ID,
-                                                'order_by': 'lower(obj.name)',
-                                                'limit': 5, 'offset': 0})
 
     # Loop over all images associated with the owner and find the files of interest. Score the ROIs in csv files.
     # Very loosely based on https://docs.openmicroscopy.org/omero/5.6.1/developers/Python.html.
-    for project in projects:
-        for dataset in project.listChildren():
-            for image in dataset.listChildren():
-
-                cur_img_name = image.getName()
-
-                for id in ids:
-
-                    id_string_omero = id + '.svs [0]'
-
-                    if id_string_omero in cur_img_name:
-
-                        print('OMERO: located {} ROIs from file "{}".'.format(image.getROICount(), id_string_omero))
-                        found_rois = roi_service.findByImage(image.getId(), roi_options)
-
-                        # Loop over each ROI:
-                        ROI_points = []
-                        ROI_name = []
-                        ROI_id = []
-                        image_name = []
-                        ROI_type = []
-                        for roi in found_rois.rois:
-                            for s in roi.copyShapes():
-
-                                if s.__class__.__name__ == 'PolygonI':
-                                    ROI_points.append(s.getPoints().getValue())
-                                elif s.__class__.__name__ == 'RectangleI':
-                                    xmin = str(round(s.getX().getValue(), 1))
-                                    xmax = str(round(s.getX().getValue(), 1) + round(s.getWidth().getValue(), 1))
-                                    ymin = str(round(s.getY().getValue(), 1))
-                                    ymax = str(round(s.getY().getValue(), 1) + round(s.getHeight().getValue(), 1))
-                                    fullstr = xmin + ',' + ymin + ' ' + xmax + ',' + ymin + ' ' + xmax + ',' + ymax + \
-                                              ' ' + xmin + ',' + ymax
-                                    ROI_points.append(fullstr)
-                                else:
-                                    RuntimeError('Shape " ' + s.__class__.__name__ + '" unsupported yet.')
-
-                                ROI_type.append('polygon')
-                                ROI_name.append(s.getTextValue().getValue())
-                                ROI_id.append(s.getId().getValue())
-                                image_name.append(id_string_omero)
-
-                        os.makedirs(download_path, exist_ok=True)
-                        df = pd.DataFrame(
-                            {'image_name': image_name, 'type': ROI_type, 'roi_id': ROI_id, 'Text': ROI_name,
-                             'Points': ROI_points})
-                        export_file = os.path.join(download_path, id_string_omero + '_roi_measurements.csv')
-                        df.to_csv(export_file)
-                        print(
-                            'OMERO: {}/{} ROIs exported to location: {}'.format(len(ROI_name), str(image.getROICount()),
-                                                                                export_file))
+    for image_id, image_name in zip(dataset['id_omero'],dataset['id_external']):
+        
+        image = conn.getObject('Image', image_id)
+        print('OMERO: located {} ROIs from file "{}".'.format(image.getROICount(),image_name ))
+        found_rois = roi_service.findByImage(image_id, roi_options)
+        
+        # Loop over each ROI:
+        ROI_points = []
+        ROI_name = []
+        ROI_id = []
+        image_name_list = []
+        ROI_type = []
+        for roi in found_rois.rois:
+            for s in roi.copyShapes():
+                
+                if s.__class__.__name__ == 'PolygonI':
+                    ROI_points.append(s.getPoints().getValue())
+                elif s.__class__.__name__ == 'RectangleI':
+                    xmin = str(round(s.getX().getValue(), 1))
+                    xmax = str(round(s.getX().getValue(), 1) + round(s.getWidth().getValue(), 1))
+                    ymin = str(round(s.getY().getValue(), 1))
+                    ymax = str(round(s.getY().getValue(), 1) + round(s.getHeight().getValue(), 1))
+                    fullstr = xmin + ',' + ymin + ' ' + xmax + ',' + ymin + ' ' + xmax + ',' + ymax + \
+                        ' ' + xmin + ',' + ymax
+                    ROI_points.append(fullstr)
+                else:
+                    RuntimeError('Shape " ' + s.__class__.__name__ + '" unsupported yet.')
+                    
+                ROI_type.append('polygon')
+                ROI_name.append(s.getTextValue().getValue())
+                ROI_id.append(s.getId().getValue())
+                image_name_list.append(image_name)
+        
+        os.makedirs(download_path, exist_ok=True)
+        df = pd.DataFrame({'image_name': image_name_list, 'type': ROI_type, 'roi_id': ROI_id, 'Text': ROI_name, 'Points': ROI_points})
+        export_file = Path(download_path, image_name + '_roi_measurements.csv')
+        df.to_csv(export_file)
+        print('OMERO: {}/{} ROIs exported to location: {}'.format(len(ROI_name), str(image.getROICount()), export_file))
+                                                                
 
 
 def list_project_files(host=None, user=None, pw=None, target_group=None, target_member=None):

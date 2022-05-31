@@ -6,17 +6,17 @@ import sys
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from Utils import OmeroTools, npyExportTools
+from Utils import OmeroTools#, npyExportTools
 from PIL import Image
 from tqdm import tqdm
 import torch
-from WSI_Viewer import generate_overlay
+from pathlib import Path
+from Visualization.WSI_Viewer import generate_overlay
 from Dataloader.Dataloader import gather_WSI_npy_indexes
 import copy
-
+from sklearn import preprocessing
 sys.path.append('../')
 import toml
-from QA.Normalization.Colour import ColourNorm
 from mpire import WorkerPool
 import datetime
 from sys import platform
@@ -61,7 +61,7 @@ def lims_to_vec(xmin=0, xmax=0, ymin=0, ymax=0, patch_size=[0, 0]):
     # Create an array containing all relevant tile edges
     edges_x = np.arange(xmin, xmax, patch_size[0])
     edges_y = np.arange(ymin, ymax, patch_size[1])
-    EX, EY = np.meshgrid(edges_x, edges_y)
+    EX, EY  = np.meshgrid(edges_x, edges_y)
     edges_to_test = np.column_stack((EX.flatten(), EY.flatten()))
     return edges_to_test
 
@@ -89,77 +89,61 @@ def contour_intersect(cnt_ref, cnt_query):
     return False
 
 
-def patch_background_fraction(dataset, edge):
-    # dataset is a tuple: (WSI_object, patch_size, colour_normaliser, bg_threshold). To work with // processing.
+def patch_background_fraction(shared, edge):
+    # shared is a tuple: (WSI_object, patch_size, bg_threshold). To work with // processing.
 
     # patch_background_fraction grabs an image patch of size patch_size from WSI_object at location edge.
-    # It then applies colour normalisation with using the colour_normaliser class and evaluate background fraction,
-    # defined as the number of pixels whose grayscale intensity is > threshold*255.
+    # It then evaluate background fraction defined as the number of pixels where greyscase > threshold*255.
 
-    patch = np.array(dataset[0].read_region(edge, 0, tuple(dataset[1])).convert("RGB"))
-
-    if dataset[2]:
-        img_norm, _, _ = dataset[2].normalize(torch.tensor(patch).permute(2, 0, 1), stains=False)
-        img_norm = img_norm.numpy()
-    else:
-        img_norm = patch.transpose(2, 0, 1)
-
+    patch = np.array(shared[0].read_region(edge, 0, tuple(shared[1])).convert("RGB"))
+    img_norm = patch.transpose(2, 0, 1)
     patch_norm_gray = img_norm[:, :, 0] * 0.2989 + img_norm[:, :, 1] * 0.5870 + img_norm[:, :, 2] * 0.1140
-    background_fraction = np.sum(patch_norm_gray > dataset[3] * 255) / np.prod(patch_norm_gray.shape)
+    background_fraction = np.sum(patch_norm_gray > shared[2] * 255) / np.prod(patch_norm_gray.shape)
 
     return background_fraction
 
 
-def tile_membership_contour(dataset, edge):
-    # dataset is a tuple: (WSI_object, patch_size, colour_normaliser, remove_BG, contours_idx_within_ROI, df, coords).
+def tile_membership_contour(shared, edge):
+    # shared is a tuple: (WSI_object, patch_size, remove_BG, contours_idx_within_ROI, df, coords).
     # This allows usage with MPIRE for multiprocessing, which provides a modest speedup. Unpack:
-    # WSI_object = dataset[0]
-    # patch_size = dataset[1]
-    # colour_normaliser = dataset[2]
-    # remove_BG = dataset[3]
-    # contours_idx_within_ROI = dataset[4]
-    # df = dataset[5]
-    # coords = dataset[6]
+    # WSI_object = shared[0]
+    # patch_size = shared[1]
+    # remove_BG = shared[2]
+    # contours_idx_within_ROI = shared[3]
+    # df = shared[4]
+    # coords = shared[5]
 
-    # Start by assuming that the patch is within the contour, and remove it if it does not meet
-    # a set of conditions.
-    if isinstance(dataset[5], pd.DataFrame):
+    # Start by assuming that the patch is within the contour, and remove it if it does not meet a set of conditions.
+    
+    # First: is the patch within the ROI? Test with cv2 for pre-defined contour,
+    # or if no contour then do nothing and use the patch.
+    patch_outside_ROI = cv2.pointPolygonTest(shared[5],
+                                             (edge[0] + shared[1][0] / 2,
+                                              edge[1] + shared[1][1] / 2),
+                                             measureDist=False) == -1
+    if patch_outside_ROI:
+        return False
 
-        # First: is the patch within the ROI? Test with cv2 for pre-defined contour,
-        # or if no contour then do nothing and use the patch.
-        patch_outside_ROI = cv2.pointPolygonTest(dataset[6],
-                                                 (edge[0] + dataset[1][0] / 2,
-                                                  edge[1] + dataset[1][1] / 2),
-                                                 measureDist=False) == -1
-        if patch_outside_ROI:
-            return False
-
-        # Second: verify that the valid patch is not within any of the ROIs identified
-        # as fully inside the current ROI.
-        patch_within_other_ROIs = []
-        for ii in range(len(dataset[4])):
-            cii = dataset[4][ii]
-            object_in_ROI_coords = split_ROI_points(dataset[5]['Points'][cii]).astype(int)
-            patch_within_other_ROIs.append(cv2.pointPolygonTest(object_in_ROI_coords,
-                                                                (edge[0] + dataset[1][0] / 2,
-                                                                 edge[1] + dataset[1][1] / 2),
-                                                                measureDist=False) >= 0)
-
-        if any(patch_within_other_ROIs):
-            return False
+    # Second: verify that the valid patch is not within any of the ROIs identified
+    # as fully inside the current ROI.
+    patch_within_other_ROIs = []
+    for ii in range(len(shared[3])):
+        cii = shared[3][ii]
+        object_in_ROI_coords = split_ROI_points(shared[4]['Points'][cii]).astype(int)
+        patch_within_other_ROIs.append(cv2.pointPolygonTest(object_in_ROI_coords,
+                                                            (edge[0] + shared[1][0] / 2,
+                                                             edge[1] + shared[1][1] / 2),
+                                                            measureDist=False) >= 0)
+        
+    if any(patch_within_other_ROIs):
+        return False
 
     # Third condition: verify if the remove background condition is turned on, and apply.
     # This is the code's main bottleneck as we need to load each patch, colour-normalise it, and assess its colour.
-    if dataset[3]:
-
-        background_fraction = patch_background_fraction(dataset[0:4], edge)
-
-        if background_fraction > 0.5:
-            return False
-
-        # for debugging/validation purposes: uncomment to plot all patches on top of contours.
-        # plot_contour(edge[0], edge[0] + patch_size, edge[1], edge[1] + patch_size)
-
+    if shared[2]:
+        background_fraction = patch_background_fraction(shared[0:3], edge)
+        if background_fraction > 0.5: return False
+            
     return True
 
 
@@ -167,7 +151,7 @@ class PreProcessor:
 
     def __init__(self, config):
 
-        self.config = copy.deepcopy(config)
+        self.config = config
 
         # Robustness to various forms of Vis
         self.vis = copy.copy(config['DATA']['Vis'][0])
@@ -179,27 +163,14 @@ class PreProcessor:
         if len(config['DATA']['Patch_Size']) > 1:
             print('Unsupported number of patch sizes, using the first one: {}'.format(self.patch_size))
 
-
-        if 'Colour_Norm_File' in config['NORMALIZATION']:
-            self.colour_normaliser = ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File'])
-        else:
-            self.colour_normaliser = None
-
         # Create some paths that are always the same defined with respect to the data folder.
         self.patches_folder = os.path.join(self.config['DATA']['SVS_Folder'], 'patches')
         os.makedirs(self.patches_folder, exist_ok=True)
         self.QA_folder = os.path.join(self.patches_folder, 'QA')
         os.makedirs(self.QA_folder, exist_ok=True)
-        self.contours_folder = os.path.join(self.patches_folder, 'contours')
+        self.contours_folder = Path(self.patches_folder, 'contours')
         os.makedirs(self.contours_folder, exist_ok=True)
 
-        # Format OMERO login as a dict for easier access.
-        if 'OMERO' in config:
-            self.omero_login = {'host': config['OMERO']['Host'], 'user': config['OMERO']['User'],
-                                'pw': config['OMERO']['Pw'],
-                                'target_group': config['OMERO']['Target_Group']}
-        else:
-            self.omero_login = None
 
         # Tag the session
         e = datetime.datetime.now()
@@ -213,40 +184,36 @@ class PreProcessor:
         # For each WSI to be processed, contains the index of the dataset to write to in the .npy file
         self.WSI_processing_index = None
 
-    # basic functions designed for AnnotationsToNPY
-    # ----------------------------------------------------------------------------------------------------------------
-    def openslide_read_WSI(self, id):
-        search_WSI_query = os.path.join(self.config['DATA']['SVS_Folder'], '**', id + '.svs')
-        svs_filename = glob.glob(search_WSI_query, recursive=True)[0]  # if file is hidden recursively
-        WSI_object = openslide.open_slide(svs_filename)
-        return WSI_object
+    def Create_Contours_Overlay_QA(self, row, df_export):
 
-    def Create_Contours_Overlay_QA(self, idx, df_export):
+        ## Convert label to numerical value
+        le = preprocessing.LabelEncoder()
+        numerical_label      = le.fit_transform(df_export['tissue_type'])
+        all_possible_labels  = np.array(df_export['tissue_type'])
+        all_numerical_labels = le.transform(all_possible_labels)
+            
+        patch_size           = self.patch_size
+        WSI_object           = openslide.open_slide(row['SVS_PATH'])
+        vis_level_view       = len(WSI_object.level_dimensions) - 1  # always the lowest res vis level
+        N_classes            = len(all_possible_labels)
 
-        patch_size = self.patch_size
-        all_possible_labels = np.array(list(set(self.config['PREPROCESSING_MAPPING']['contour_id'].values)))
-        WSI_object = self.openslide_read_WSI(self.ids[idx])
-        vis_level_view = len(WSI_object.level_dimensions) - 1  # always the lowest res vis level
-        N_classes = len(all_possible_labels)
-
-        if N_classes <= 10:
-            cmap = plt.get_cmap('Set1', lut=N_classes)
-        elif N_classes > 10 & N_classes <= 20:
-            cmap = plt.get_cmap('tab20', lut=N_classes)
-        else:
-            cmap = plt.get_cmap('Spectral', lut=N_classes)
+        if N_classes <= 10: cmap = plt.get_cmap('Set1', lut=N_classes)           
+        elif N_classes > 10 & N_classes <= 20: cmap = plt.get_cmap('tab20', lut=N_classes)        
+        else: cmap = plt.get_cmap('Spectral', lut=N_classes)
+            
 
         cmap.N = N_classes
         cmap.colors = cmap.colors[0:N_classes]
 
         # For visual aide: show all colors in the bottom left corner.
-        legend_coords = np.array([np.arange(0, N_classes * patch_size[0], patch_size[0]), np.zeros(N_classes)]).T
-        legend_label = all_possible_labels
-        all_labels = np.concatenate((legend_label, df_export[self.config['DATA']['Label_Name']].values + 1), axis=0)
-        all_coords = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
+        #legend_coords    = np.array([np.arange(0, N_classes * patch_size[0], patch_size[0]), np.zeros(N_classes)]).T
+        #legend_label    = all_possible_labels
+        #numerical_labels = np.concatenate((all_possible_labels, df_export[self.config['DATA']['Label_Name']].values + 1), axis=0)
+        #all_coords       = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
 
         # Broken for now - will be fixed in the next update. This will just not display QA maps.
-        heatmap, overlay = generate_overlay(WSI_object, all_labels, all_coords, vis_level=vis_level_view,
+        heatmap, overlay = generate_overlay(WSI_object, numerical_label, np.array(df_export[["coords_x", "coords_y"]]),
+                                            vis_level=vis_level_view,
                                             patch_size=patch_size, cmap=cmap, alpha=0.4)
 
         # Draw the contours for each label
@@ -255,7 +222,7 @@ class PreProcessor:
         for ii in range(len(indexes_to_plot)):
             im1 = 255 * (overlay == indexes_to_plot[ii]).astype(np.uint8)
             contours, hierarchy = cv2.findContours(im1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            color_label = np.argwhere(indexes_to_plot[ii] == all_possible_labels + 1)
+            color_label = np.argwhere(indexes_to_plot[ii] == all_numerical_labels + 1)
 
             if len(color_label) > 0:
                 col = 255 * cmap.colors[color_label[0][0]]
@@ -268,27 +235,24 @@ class PreProcessor:
         # heatmap_PIL.show()
 
         # Export image to QA_path to evaluate the quality of the pre-processing.
-        ID = self.ids[idx]
-        img_pth = os.path.join(self.QA_folder, ID + '_patch_' + str(patch_size[0]) + '.pdf')
-        heatmap_PIL.save(img_pth, 'pdf')
+        ID = row['id_external']
+        img_pth = Path(self.QA_folder, ID + '_patch_' + str(patch_size[0]) + '.pdf')
+        heatmap_PIL.save(str(img_pth), 'pdf')
 
-        print('QA overlay exported at: {}'.format(
-            os.path.join(self.QA_folder, ID + '_patch_' + str(self.patch_size[0]) + '.pdf')))
+        print('QA overlay exported at: {}'.format(Path(self.QA_folder, ID + '_patch_' + str(self.patch_size[0]) + '.pdf')))
 
-    def organise_contours(self):
+
+    def organise_contours(self,dataset):
 
         # Creates .csv files from contours, as specified in the configuration file.
         contour_files = []
 
         # Create contours first. This will download all contours.
-        OmeroTools.download_omero_ROIs(download_path=self.contours_folder, ids=self.ids,
-                                       **self.omero_login)
+        OmeroTools.download_omero_ROIs(self.config, dataset, download_path=self.contours_folder)
         print('--------------------------------------------------------------------------------')
 
         # Then, load the local contours (same if contour_type is local or omero)
-        for ID in self.ids:
-            contour_files.append(
-                os.path.join(self.contours_folder, ID + '.svs [0]_roi_measurements.csv'))
+        for ID in dataset['id_external']: contour_files.append(str(Path(self.contours_folder, ID + '_roi_measurements.csv')))
 
         # The first thing we want to do is assign labels (numbers) to the names of contours. To do so, we must loop over
         # the existing datasets and find all the unique contour types. Also, if using a subset of all contours through
@@ -296,7 +260,7 @@ class PreProcessor:
 
         contour_names = []
         for contour_file in contour_files:
-            df = pd.read_csv(os.path.join(self.contours_folder, contour_file))
+            df = pd.read_csv(contour_file)
 
             for name in df.Text.unique():
 
@@ -339,14 +303,16 @@ class PreProcessor:
                 if any(loc):  # if the contour exists in the mapping
                     unique_contour_names_mapped.append(dict_contours_to_map[ctr_nm])
                     unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map[ctr_nm]])
+
                 elif any(loc_star):  # if the contour exists, but it's in the format contour*
                     dict_key = [k for ki, k in enumerate(dict_contours_to_map.keys()) if loc_star[ki]][0]
                     unique_contour_names_mapped.append(dict_contours_to_map[dict_key])
                     unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map[dict_key]])
+
                 elif 'remaining' in keys:  # shortcut to assign all other contours to dict_contours_to_map['remaining']
                     unique_contour_names_mapped.append(dict_contours_to_map['remaining'])
-                    unique_contour_names_mapped_label.append(
-                        dict_mapped_contours_label[dict_contours_to_map['remaining']])
+                    unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map['remaining']])                        
+
                 else:  # otherwise, use the contour, do not modify it.
                     unique_contour_names_mapped.append(ctr_nm)
                     unique_contour_names_mapped_label.append(count_catch_contour + len(set(values)))
@@ -368,87 +334,37 @@ class PreProcessor:
 
         return contour_files
 
-    def contours_processing(self, contour_files, idx):
+    def contours_processing(self, row):
 
-        # Process the contours of the idx^th WSI using the contours from contour_files. If there are no contour files,
-        # then each tile is labeled.
-
-        # Preallocate some arrays
+        # Process the contours of the idx^th WSI using the contours from contour_files. If there are no contour files, then each tile is labeled.
         coord_x = []
         coord_y = []
-        label = []
-        ID = self.ids[idx]
+        label   = []
 
         #  load contours if existing, or process entire WSI
-        WSI_object = self.openslide_read_WSI(ID)
+        WSI_object = openslide.open_slide(row['SVS_PATH'])
 
-        if contour_files:
-            df = pd.read_csv(contour_files[idx])
-            df = roi_to_points(df)  # converts ROIs that are not polygons to "Points" for uniform handling.
-        else:
-            xmax, ymax = WSI_object.level_dimensions[0]
-            xmin, ymin = 0, 0
-            df = [1]  # dummy placeholder as we have a single contour equal to the entire image.
+        df = pd.read_csv(row['contour_file'])
+        df = roi_to_points(df)  # converts ROIs that are not polygons to "Points" for uniform handling.
 
         # Loop over each contour and extract patches contained within
         for i in range(len(df)):
-
-            if isinstance(df, pd.DataFrame):
-                ROI_name = df['Text'][i].lower()
+            ROI_name = df['Text'][i].lower()
+            print('Processing ROI "{}" ({}/{}) of ID "{}": '.format(ROI_name, str(i + 1), str(len(df)), str(row['id_external'])),end='')            
+            if ROI_name not in self.config['PREPROCESSING_MAPPING']['contour_name'].values: print('ROI not within selected contours, skipping.')
             else:
-                ROI_name = 'entire_wsi'
-
-            print('Processing ROI "{}" ({}/{}) of ID "{}": '.format(ROI_name, str(i + 1), str(len(df)), str(ID)),
-                  end='')
-
-            if ROI_name == 'entire_wsi':
-
-                print('Creating patches for entire image, processing.')
-
-                xmax, ymax = WSI_object.level_dimensions[0]
-                edges_to_test = lims_to_vec(xmin=0, xmax=xmax, ymin=0, ymax=ymax,
-                                            patch_size=self.patch_size)
-                coord_x.append(edges_to_test[:, 0])
-                coord_y.append(edges_to_test[:, 1])
-                label.append(np.ones(len(edges_to_test), dtype=int) * -1)  # should only be a single value.
-
-            elif ROI_name not in self.config['PREPROCESSING_MAPPING']['contour_name'].values:
-
-                print('ROI not within selected contours, skipping.')
-
-            else:
-
                 print('Found contours, processing.')
-
-                if isinstance(df, pd.DataFrame):
-                    coords = split_ROI_points(df['Points'][i]).astype(int)
-                    contour_label = [l for s, l in
-                                     zip(self.config['PREPROCESSING_MAPPING']['contour_name'].values,
-                                         self.config['PREPROCESSING_MAPPING']['contour_id'].values)
-                                     if ROI_name in s]
-
-                    xmin, ymin = np.min(coords, axis=0)
-                    xmax, ymax = np.max(coords, axis=0)
-
-                    # To make sure we do not end up with overlapping contours at the end, round xmin, xmax, ymin,
-                    # ymax to the nearest multiple of patch_size.
-                    xmin = int(
-                        np.floor(xmin / self.patch_size[0]) * self.patch_size[0])
-                    ymin = int(
-                        np.floor(ymin / self.patch_size[1]) * self.patch_size[1])
-                    xmax = int(
-                        np.ceil(xmax / self.patch_size[0]) * self.patch_size[0])
-                    ymax = int(
-                        np.ceil(ymax / self.patch_size[1]) * self.patch_size[1])
-
-                else:
-                    contour_label = [-1]  # -1 will mean, by definition, that there are no contours assigned.
-
-                # For debugging: uncomment to see each contour, and its bounding box.
-                # plt.figure()
-                # plt.plot(coords[:, 0], coords[:, 1], '-r')
-                # plot_contour(xmin, xmax, ymin, ymax, colour='g')
-
+                coords = split_ROI_points(df['Points'][i]).astype(int)
+                xmin, ymin = np.min(coords, axis=0)
+                xmax, ymax = np.max(coords, axis=0)
+                
+                # To make sure we do not end up with overlapping contours at the end, round xmin, xmax, ymin,
+                # ymax to the nearest multiple of patch_size.
+                xmin = int(np.floor(xmin / self.patch_size[0]) * self.patch_size[0])                        
+                ymin = int(np.floor(ymin / self.patch_size[1]) * self.patch_size[1])                        
+                xmax = int(np.ceil(xmax / self.patch_size[0]) * self.patch_size[0])
+                ymax = int(np.ceil(ymax / self.patch_size[1]) * self.patch_size[1])
+                        
                 # -------------------------------------------------------------------------------------------
                 # Get the list of all contours that are contained within the current one.
                 other_ROIs_index = np.setdiff1d(np.arange(len(df)), i)
@@ -472,77 +388,56 @@ class PreProcessor:
                         contours_idx_within_ROI.append(other_ROIs_index[jj])
 
                 # --------------------------------------------------------------------------------------------
-                edges_to_test = lims_to_vec(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax,
-                                            patch_size=self.patch_size)
+                edges_to_test = lims_to_vec(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax,patch_size=self.patch_size)
 
                 # Remove BG in concerned ROIs
-                remove_BG_cond = [ROI_name.lower() in remove_bg_contour.lower() for remove_bg_contour in
-                                  self.config['CONTOURS']['Background_Removal']]
-                if any(remove_BG_cond):
-                    remove_BG = self.config['CONTOURS']['Background_Thresh']
-                else:
-                    remove_BG = None
+                remove_BG_cond = [ROI_name.lower() in remove_bg_contour.lower() for remove_bg_contour in self.config['CONTOURS']['Background_Removal']]
+                if any(remove_BG_cond): remove_BG = self.config['CONTOURS']['Background_Thresh']                                       
+                else:remove_BG = None                    
 
-                # Loop over all tiles and see if they are members of the current ROI. Do in // if you have many
-                # tiles, otherwise the overhead cost is not worth it
-                dataset = (WSI_object, self.patch_size, self.colour_normaliser,
-                           remove_BG, contours_idx_within_ROI, df, coords)
-
-                if len(edges_to_test) > 1500 and (
-                        platform != "darwin"):  # minimal number for // processing, otherwise not worth it.
-
+                # Loop over all tiles and see if they are members of the current ROI. Do in // if you have many tiles, otherwise the overhead cost is not worth it
+                shared = (WSI_object, self.patch_size, remove_BG, contours_idx_within_ROI, df, coords)
+                
+                if len(edges_to_test) > 1500:  # minimal number for // processing, otherwise not worth it.
                     with WorkerPool(n_jobs=10, start_method='fork') as pool:
-                        pool.set_shared_objects(dataset)
+                        pool.set_shared_objects(shared)
                         results = pool.map(tile_membership_contour, list(edges_to_test), progress_bar=True)
 
-                    membership = np.asarray(results)
+                    isInROI = np.asarray(results)
 
                 else:
-                    membership = np.full(len(edges_to_test), False)
-                    for ei in tqdm(range(len(edges_to_test))):
-                        membership[ei] = tile_membership_contour(dataset, edges_to_test[ei, :])
+                    isInROI = np.full(len(edges_to_test), False)
+                    for ei in tqdm(range(len(edges_to_test))): isInROI[ei] = tile_membership_contour(shared, edges_to_test[ei, :])
+                coord_x.extend(edges_to_test[isInROI, 0])
+                coord_y.extend(edges_to_test[isInROI, 1])
+                label.extend(np.full(len(np.where(isInROI)[0]),ROI_name))
 
-                coord_x.append(edges_to_test[membership, 0])
-                coord_y.append(edges_to_test[membership, 1])
-                label.append(
-                    np.ones(np.sum(membership), dtype=int) * contour_label[0])  # should only be a unique value.
-
-        # Once looped over all ROIs for a given index, export as csv
-        coord_x = [item for sublist in coord_x for item in sublist]
-        coord_y = [item for sublist in coord_y for item in sublist]
-        label = [item for sublist in label for item in sublist]
-        df_export = pd.DataFrame(
-            {'coords_x': coord_x, 'coords_y': coord_y, 'tissue_type': label})
-
-        cur_dataset = {'header': self.config, 'dataframe': df_export}
-
-        return cur_dataset
+        df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y, 'tissue_type': label})
+        df_export['SVS_PATH'] = row['SVS_PATH']
+        #cur_dataset = {'header': self.config, 'dataframe': df_export}
+        return df_export
 
     def inference_preprocessing(self, idx):
 
-        # Creates npy and identifies non-background tiles.
-
-        ID = self.ids[idx]
-
         # 1. Load WSI
-        WSI_object = self.openslide_read_WSI(ID)
+        WSI_object = openslide.open_slide(row['SVS_Path'])
 
         # 2. Identify non-background patches
         edges_to_test = lims_to_vec(xmin=0, xmax=WSI_object.level_dimensions[0][0], ymin=0,
                                     ymax=WSI_object.level_dimensions[0][1],
                                     patch_size=self.patch_size)
-        dataset = (WSI_object, self.patch_size, self.colour_normaliser, 0.86)  # for // processing
+        shared = (WSI_object, self.patch_size, 0.86)  # for // processing
 
         if platform != "darwin":  # fail safe - parallel computing not working on M1 macs for now
             with WorkerPool(n_jobs=10, start_method='fork') as pool:
-                pool.set_shared_objects(dataset)
+                pool.set_shared_objects(shared)
                 background_fractions = pool.map(patch_background_fraction, list(edges_to_test), progress_bar=True)
             background_fractions = np.asarray(background_fractions)
 
         else:
             background_fractions = np.zeros(len(edges_to_test))
-            for ii in tqdm(range(len(edges_to_test)), desc="Background estimation of ID #{}...".format(ID)):
-                background_fractions[ii] = patch_background_fraction(dataset, edges_to_test[ii, :])
+            for ii in tqdm(range(len(edges_to_test)), desc="Background estimation of ID #{}...".format(row['id_external'])):
+                background_fractions[ii] = patch_background_fraction(shared, edges_to_test[ii, :])
 
         valid_patches = background_fractions < 0.5
 
@@ -552,17 +447,14 @@ class PreProcessor:
         df_out = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y})
 
         cur_dataset = {'header': self.config, 'dataframe': df_out}
-
         return cur_dataset
 
-    def export_to_npy(self, idx, cur_dataset):
+    def export_to_npy(self, row, cur_dataset):
 
         n = self.WSI_processing_index[idx]
-        cid = self.ids[idx]
-        patch_npy_export_filename = os.path.join(self.patches_folder, cid + '.npy')
+        patch_npy_export_filename = Path(self.patches_folder, dataset['id_external'] + '.npy')
 
-        if os.path.exists(patch_npy_export_filename):  # either append or replace
-
+        if patch_npy_export_filename.is_file():  #replace
             datasets = list(np.load(patch_npy_export_filename, allow_pickle=True))
             N = len(datasets)
 
@@ -580,52 +472,18 @@ class PreProcessor:
             np.save(patch_npy_export_filename, [cur_dataset])
             print('WSI {}.npy: new file created and added current dataset.'.format(cid))
 
-        # Also output an excel sheet of the svs. For debugging purposes.
-        npyExportTools.decode_npy(patch_npy_export_filename)
-
     # ----------------------------------------------------------------------------------------------------------------
-    def AnnotationsToNPY(self, ids, overwrite=True):
+    def QueryAnnotations(self, dataset):
 
-        self.ids = ids
+        # Download and organise contours
+        if self.config['CONTOURS']: dataset['contour_file'] = self.organise_contours(dataset)
 
-        # --------------
-        # 1. Download and organise contours, if you are currently working with contours.
-        if self.config['CONTOURS']:
-            contour_files = self.organise_contours()
-        else:
-            contour_files = []
-        # --------------
-
-        # --------------
-        # 2. Gather the index from the .npy file that will be used to store the results of the current pre-processing.
-        self.WSI_processing_index, processing_flag = gather_WSI_npy_indexes(self.config, self.ids, overwrite, verbose=True)
-        # --------------
-
-        # --------------
-        # 3 and 4, performed WSI-wise: process the dataset and export to npy.
-        for idx in range(len(self.ids)):  # WSI wise
-
-            if processing_flag[idx]:
-
-                # 4. Process the dataset separately if contour+training vs inference
-                if self.config['CONTOURS'] and not self.config['MODEL']['Inference']:
-                    cur_dataset = self.contours_processing(contour_files, idx)
-                    if contour_files:
-                        self.Create_Contours_Overlay_QA(idx, cur_dataset['dataframe'])
-                if self.config['MODEL']['Inference']:
-                    cur_dataset = self.inference_preprocessing(idx)
-
-                # 5. Export to npy.
-                self.export_to_npy(idx, cur_dataset)
-            # --------------
-
+        df = pd.DataFrame()
+        # process the dataset and export to npy.
+        for idx, row in dataset.iterrows():  # WSI wise
+            cur_dataset = self.contours_processing(row)
+            self.Create_Contours_Overlay_QA(row, cur_dataset)
+            df = df.append(cur_dataset,ignore_index=True)
+            #self.export_to_npy(self.config, row, cur_dataset)
             print('--------------------------------------------------------------------------------')
-
-        return
-
-
-if __name__ == "__main__":
-    config = toml.load('./Configs/example_config.ini')
-    preprocessor = PreProcessor(config)
-
-
+        return df

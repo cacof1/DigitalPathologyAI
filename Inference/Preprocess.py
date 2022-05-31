@@ -13,19 +13,15 @@ from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 
 config = toml.load(sys.argv[1])
-#config = toml.load('/home/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/trainer_tumour_convnet.ini')  # learn
-# config = toml.load('/home/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/infer_tumour_convnet_5classes.ini')  # infer
 
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
-
 datasets = QueryFromServer(config)
 Synchronize(config, datasets)
 ids = [d.split('.svs')[0] for d in datasets.Name.tolist()]  # For easy processing
 
 ########################################################################################################################
 # 2. Pre-processing: create npy files
-
 preprocessor = PreProcessor(config)
 preprocessor.AnnotationsToNPY(ids, overwrite=False)
 del preprocessor
@@ -36,26 +32,27 @@ del preprocessor
 name = GetInfo.format_model_name(config)
 
 # Set up all logging (if training)
-if config['MODEL']['Inference'] is False:
 
-    if 'logger_folder' in config['CHECKPOINT']:
-        logger = TensorBoardLogger(os.path.join('lightning_logs', config['CHECKPOINT']['logger_folder']), name=name)
-    else:
-        logger = TensorBoardLogger('lightning_logs', name=name)
-    lr_monitor = LearningRateMonitor(logging_interval='step')
-    checkpoint_callback = ModelCheckpoint(dirpath=config['MODEL']['Model_Save_Path'],
-                                          monitor=config['CHECKPOINT']['Monitor'],
-                                          filename=name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' +
-                                                   config['CHECKPOINT']['Monitor'] + ':.2f}',
-                                          save_top_k=1,
-                                          mode=config['CHECKPOINT']['Mode'])
+if 'logger_folder' in config['CHECKPOINT']:
+    logger = TensorBoardLogger(os.path.join('lightning_logs', config['CHECKPOINT']['logger_folder']), name=name)
+else:
+    logger = TensorBoardLogger('lightning_logs', name=name)
+lr_monitor = LearningRateMonitor(logging_interval='step')
+checkpoint_callback = ModelCheckpoint(dirpath=config['MODEL']['Model_Save_Path'],
+                                      monitor=config['CHECKPOINT']['Monitor'],
+                                      filename=name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' +
+                                      config['CHECKPOINT']['Monitor'] + ':.2f}',
+                                      save_top_k=1,
+                                      mode=config['CHECKPOINT']['Mode'])
 
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
 # Load coords_file
 coords_file = LoadFileParameter(config, ids)
 
-# Augment data on the training set
+####################
+##Augmentation
+
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
@@ -90,6 +87,8 @@ val_transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
+####################
+
 if config['MODEL']['Inference'] is False:  # train
     data = DataModule(
         coords_file,
@@ -116,21 +115,17 @@ else:  # prediction does not use train/validation sets, only directly the datalo
 
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 # From paper: Class-balanced Loss Based on Effective Number of Samples
-if config['MODEL']['Inference']:
-    config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
+config['MODEL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 if config['MODEL']['Inference'] is False:
-    config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
     npatches_per_class = GetInfo.ShowTrainValTestInfo(data, config)
-
     # The following will be used in an upcoming release to add weights to labels. This will be packaged in a function:
     # N = sum(npatches_per_class)
     # beta = (N-1)/N
     # effective_samples = (1 - beta**npatches_per_class)/(1-beta)
     # raw_scores = 1 / effective_samples
     # w = config['DATA']['N_Classes'] * raw_scores / sum(raw_scores)
-    # config['INTERNAL']['weights'] = torch.tensor(w).float()
-    # print(config['INTERNAL']['weights'])
-    # note: all the above could be moved directly into the ConvNet model.
+    # config['MODEL']['weights'] = torch.tensor(w).float()
+    # print(config['MODEL']['weights'])
 
 # Load model and train/infer
 if config['MODEL']['Inference'] is False:  # train
@@ -143,7 +138,6 @@ if config['MODEL']['Inference'] is False:  # train
     trainer.fit(model, data)
 
 else:  # infer
-
     trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['MODEL']['Precision'])
     model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
     model.eval()
@@ -152,5 +146,4 @@ else:  # infer
 
     for i in range(predicted_classes_prob.shape[1]):
         print('Adding the column ' + '"prob_' + config['DATA']['Label_Name'] + str(i) + '"...')
-        SaveFileParameter(config, coords_file, predicted_classes_prob[:, i],
-                          'prob_' + config['DATA']['Label_Name'] + str(i))
+        SaveFileParameter(config, coords_file, predicted_classes_prob[:, i], 'prob_' + config['DATA']['Label_Name'] + str(i))

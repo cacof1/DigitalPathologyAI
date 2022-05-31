@@ -16,7 +16,7 @@ def sample_n_per_sample_per_label_and_equalize(coords_file, target=None, n_per_s
     # This is appropriate if you have large heterogeneity in your data (high variability in the number of patches per
     # label across WSIs).
 
-    all_ids = coords_file['file_id'].unique()
+    all_ids = coords_file['SVS_PATH'].unique()
     all_labels = coords_file[target].unique()
     final_contribution = np.zeros((len(all_labels), len(all_ids)))
 
@@ -35,7 +35,7 @@ def sample_n_per_sample_per_label_and_equalize(coords_file, target=None, n_per_s
 
             for idi in range(len(all_ids)):
                 cid = all_ids[idi]
-                df_per_label_per_svs = df_per_label[df_per_label['file_id'] == cid]
+                df_per_label_per_svs = df_per_label[df_per_label['SVS_PATH'] == cid]
                 npatches_in_sample = len(df_per_label_per_svs)
 
                 if (final_contribution[li, idi] + increment) <= npatches_in_sample:
@@ -52,7 +52,7 @@ def sample_n_per_sample_per_label_and_equalize(coords_file, target=None, n_per_s
 
     # Patch sampling is achieved with the following:
     df_list = []
-    grouped = coords_file.groupby('file_id')
+    grouped = coords_file.groupby('SVS_PATH')
     for current_fileid, group in grouped:
         grouped2 = group.groupby(target)
         for current_label, group2 in grouped2:
@@ -76,13 +76,13 @@ def sample_N_per_WSI(coords_file, n_per_sample=np.Inf):
     # Simple sampler: randomly sample min(n_per_sample,n_patches_i) patches for each WSI of index i.
     # This is appropriate when you have a single class per WSI, or if the classes are balanced within each WSI.
 
-    value_counts = coords_file.file_id.value_counts()
+    value_counts = coords_file.SVS_PATH.value_counts()
     fn_for_sampling = value_counts[value_counts > n_per_sample].index
-    df1 = coords_file[coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(n=n_per_sample,
+    df1 = coords_file[coords_file['SVS_PATH'].isin(fn_for_sampling)].groupby("SVS_PATH").sample(n=n_per_sample,
                                                                                               replace=False)
 
     if fn_for_sampling.shape != value_counts.shape:  # if some datasets have less than n_per_sample
-        df2 = coords_file[~coords_file['file_id'].isin(fn_for_sampling)].groupby("file_id").sample(frac=1)
+        df2 = coords_file[~coords_file['SVS_PATH'].isin(fn_for_sampling)].groupby("SVS_PATH").sample(frac=1)
         return pd.concat([df1, df2])
     else:
         return df1
