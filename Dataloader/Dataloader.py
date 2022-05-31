@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+from sklearn import preprocessing
 import openslide
 import numpy as np
 import torch
@@ -64,6 +65,10 @@ class DataModule(LightningDataModule):
         super().__init__()
         self.batch_size = batch_size
 
+        le = preprocessing.LabelEncoder()
+        print(coords_file[target])
+        coords_file[target] = le.fit_transform(coords_file[target])
+        
         if sampling_scheme.lower() == 'wsi':
             coords_file_sampled = sampling_schemes.sample_N_per_WSI(coords_file, n_per_sample=n_per_sample)
             svi = np.unique(coords_file_sampled.SVS_PATH)
