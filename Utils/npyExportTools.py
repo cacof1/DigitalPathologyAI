@@ -4,9 +4,9 @@ Set of tools to manage .npy creation to save patch data.
 import numpy as np
 import pandas as pd
 from deepdiff import DeepDiff
-from openpyxl.styles.alignment import Alignment
+#from openpyxl.styles.alignment import Alignment
 import os
-import xlsxwriter
+#import xlsxwriter
 
 
 def remove_dict_keys(d, blacklist):

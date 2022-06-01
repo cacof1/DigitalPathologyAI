@@ -154,8 +154,8 @@ class PreProcessor:
         self.config = config
 
         # Robustness to various forms of Vis
-        self.vis = copy.copy(config['DATA']['Vis'][0])
-        if len(config['DATA']['Vis']) > 1:
+        self.vis = copy.copy(config['BASEMODEL']['Vis'][0])
+        if len(config['BASEMODEL']['Vis']) > 1:
             print('Unsupported number of visibility levels, using the first one: {}'.format(self.vis))
 
         # Robustness to various forms of Patch_Size

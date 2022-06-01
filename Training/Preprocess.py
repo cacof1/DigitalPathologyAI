@@ -19,14 +19,15 @@ config = toml.load(sys.argv[1])
 
 dataset = QueryFromServer(config)
 Synchronize(config, dataset)
-print(dataset)
+
 
 ########################################################################################################################
 # 2. Pre-processing: create npy files
 
 preprocessor = PreProcessor(config)
 coords_file = preprocessor.QueryAnnotations(dataset)
-print(coords_file)
+config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
+
 del preprocessor
 
 # todo: export current coords_file to numpy. One can then skip preprocessing by using LoadFileParameter.
@@ -89,36 +90,24 @@ val_transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-if config['ADVANCEDMODEL']['Inference'] is False:  # train
-    data = DataModule(
-        coords_file,
-        batch_size=config['BASEMODEL']['Batch_Size'],
-        train_transform=train_transform,
-        val_transform=val_transform,
-        train_size=config['DATA']['Train_Size'],
-        val_size=config['DATA']['Val_Size'],
-        inference=False,
-        dim_list=config['BASEMODEL']['Patch_Size'],
-        vis_list=config['BASEMODEL']['Vis'],
-        n_per_sample=config['DATA']['N_Per_Sample'],
-        target=config['DATA']['Label_Name'],
-        sampling_scheme=config['DATA']['Sampling_Scheme']
+data = DataModule(
+    coords_file,
+    batch_size=config['BASEMODEL']['Batch_Size'],
+    train_transform=train_transform,
+    val_transform=val_transform,
+    train_size=config['DATA']['Train_Size'],
+    val_size=config['DATA']['Val_Size'],
+    inference=False,
+    dim_list=config['BASEMODEL']['Patch_Size'],
+    vis_list=config['BASEMODEL']['Vis'],
+    n_per_sample=config['DATA']['N_Per_Sample'],
+target=config['DATA']['Label'],
+    sampling_scheme=config['DATA']['Sampling_Scheme']
     )
-    config['DATA']['N_Training_Examples'] = data.train_data.__len__()
-
-else:  # prediction does not use train/validation sets, only directly the dataloader.
-    data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=True),
-                      batch_size=config['BASEMODEL']['Batch_Size'],
-                      num_workers=10,
-                      shuffle=False,
-                      pin_memory=True)
-
+config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 # From paper: Class-balanced Loss Based on Effective Number of Samples
-if config['ADVANCEDMODEL']['Inference']:
-    config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
-if config['ADVANCEDMODEL']['Inference'] is False:
-    config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
+config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
     #npatches_per_class = GetInfo.ShowTrainValTestInfo(data, config)
 
     # The following will be used in an upcoming release to add weights to labels. This will be packaged in a function:
@@ -131,25 +120,11 @@ if config['ADVANCEDMODEL']['Inference'] is False:
     # print(config['INTERNAL']['weights'])
     # note: all the above could be moved directly into the ConvNet model.
 
-# Load model and train/infer
-if config['ADVANCEDMODEL']['Inference'] is False:  # train
+# Load model and train
 
-    trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
-                         precision=config['BASEMODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor],
-                         logger=logger)
+trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
+                     precision=config['BASEMODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor],
+                     logger=logger)
 
-    model = ConvNet(config)
-    trainer.fit(model, data)
-
-else:  # infer
-
-    trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['BASEMODEL']['Precision'])
-    model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['CHECKPOINT']['Model_Save_Path'])
-    model.eval()
-    predictions = trainer.predict(model, data)
-    predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))
-
-    for i in range(predicted_classes_prob.shape[1]):
-        print('Adding the column ' + '"prob_' + config['DATA']['Label_Name'] + str(i) + '"...')
-        SaveFileParameter(config, coords_file, predicted_classes_prob[:, i],
-                          'prob_' + config['DATA']['Label_Name'] + str(i))
+model = ConvNet(config)
+trainer.fit(model, data)
