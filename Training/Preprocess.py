@@ -24,13 +24,17 @@ print(dataset)
 ########################################################################################################################
 # 2. Pre-processing: create npy files
 
+# option #1: preprocessor + save to npy
 preprocessor = PreProcessor(config)
 coords_file = preprocessor.getTilesFromAnnotations(dataset)
+SaveFileParameter(config, coords_file)
 print(coords_file)
-config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
 del preprocessor
 
-# todo: export current coords_file to numpy. One can then skip preprocessing by using LoadFileParameter.
+# option #2: load existing
+#coords_file = LoadFileParameter(config, dataset)
+
+config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
 
 ########################################################################################################################
 # 3. Model training
@@ -102,14 +106,13 @@ data = DataModule(
     dim_list=config['BASEMODEL']['Patch_Size'],
     vis_list=config['BASEMODEL']['Vis'],
     n_per_sample=config['DATA']['N_Per_Sample'],
-    target=config['DATA']['Label_Name'],
+    target=config['DATA']['Label'],
     sampling_scheme=config['DATA']['Sampling_Scheme']
 )
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
-
-config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 # From paper: Class-balanced Loss Based on Effective Number of Samples
+config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 
 # The following will be used in an upcoming release to add weights to labels. This will be packaged in a function:
 # N = sum(npatches_per_class)

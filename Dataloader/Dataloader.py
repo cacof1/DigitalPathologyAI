@@ -8,7 +8,7 @@ import npyExportTools
 import itertools
 import Utils.sampling_schemes as sampling_schemes
 from Utils.OmeroTools import *
-#from Utils import npyExportTools
+from Utils import npyExportTools
 from pathlib import Path
 
 class DataGenerator(torch.utils.data.Dataset):
@@ -229,16 +229,13 @@ def LoadFileParameter(config, dataset):
     coords_file = pd.DataFrame()
 
     for svs_path in dataset.SVS_PATH:
-        npy_path = os.path.join(os.path.split(svs_path)[0], 'patches', os.path.split(svs_path)[1].replace('svs', 'npy'))
+        npy_path    = os.path.join(os.path.split(svs_path)[0], 'patches', os.path.split(svs_path)[1].replace('svs', 'npy'))
         coords_file = pd.concat([coords_file, np.load(npy_path, allow_pickle=True).item()[cur_basemodel_str][1]])
 
     return coords_file
 
 
-def SaveFileParameter(config, df, column_to_add, label_to_add):
-
-    df[label_to_add] = pd.Series(column_to_add, index=df.index)
-    df = df.fillna(0)
+def SaveFileParameter(config, df):
 
     cur_basemodel_str = npyExportTools.basemodel_to_str(config)
 

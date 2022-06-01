@@ -2,19 +2,14 @@ import os
 from PreProcessing.PreProcessingTools import PreProcessor
 import toml
 from Utils import GetInfo
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 import pytorch_lightning as pl
 from torchvision import transforms
-import torch
-from torch.utils.data import DataLoader
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 from Dataloader.Dataloader import *
 
 
-# config = toml.load(sys.argv[1])
-config = toml.load('/Users/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/infer_tumour_convnet_6classes.ini')
+config = toml.load(sys.argv[1])
 
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
@@ -26,12 +21,16 @@ print(dataset)
 ########################################################################################################################
 # 2. Pre-processing: create npy files
 
+# option #1: preprocessor + save to npy
 preprocessor = PreProcessor(config)
 coords_file = preprocessor.getTilesFromNonBackground(dataset)
+SaveFileParameter(config, coords_file)
 print(coords_file)
 del preprocessor
 
-# todo: maybe mention that config['DATA']['N_Classes'] is not required?
+# option #2: load existing
+#coords_file = LoadFileParameter(config, dataset)
+
 ########################################################################################################################
 # 3. Model evaluation
 
@@ -64,6 +63,8 @@ predictions = trainer.predict(model, data)
 predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))
 
 for i in range(predicted_classes_prob.shape[1]):
-    print('Adding the column ' + '"prob_' + config['DATA']['Label'] + str(i) + '"...')
-    SaveFileParameter(config, coords_file, predicted_classes_prob[:, i],
-                      'prob_' + config['DATA']['Label'] + str(i))
+    coords_file['prob_' + config['DATA']['Label'] + str(i)] = pd.Series(predicted_classes_prob[:, i],
+                                                                        index=coords_file.index)
+    coords_file = coords_file.fillna(0)
+
+SaveFileParameter(config, coords_file)
