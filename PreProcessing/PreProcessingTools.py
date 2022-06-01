@@ -1,22 +1,18 @@
 import openslide
-import glob
 import os
 import cv2
 import sys
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from Utils import OmeroTools#, npyExportTools
+from Utils import OmeroTools
 from PIL import Image
 from tqdm import tqdm
-import torch
 from pathlib import Path
 from Visualization.WSI_Viewer import generate_overlay
-from Dataloader.Dataloader import gather_WSI_npy_indexes
 import copy
 from sklearn import preprocessing
 sys.path.append('../')
-import toml
 from mpire import WorkerPool
 import datetime
 from sys import platform
@@ -401,21 +397,21 @@ class PreProcessor:
 
         df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y, 'tissue_type': label})
         df_export['SVS_PATH'] = row['SVS_PATH']
-        #cur_dataset = {'header': self.config, 'dataframe': df_export}
+
         return df_export
 
-    def inference_preprocessing(self, idx):
+    def inference_processing(self, row):
 
         # 1. Load WSI
-        WSI_object = openslide.open_slide(row['SVS_Path'])
+        WSI_object = openslide.open_slide(row['SVS_PATH'])
 
         # 2. Identify non-background patches
         edges_to_test = lims_to_vec(xmin=0, xmax=WSI_object.level_dimensions[0][0], ymin=0,
                                     ymax=WSI_object.level_dimensions[0][1],
                                     patch_size=self.patch_size)
-        shared = (WSI_object, self.patch_size, 0.86)  # for // processing
+        shared = (WSI_object, self.patch_size, 0.90)  # for // processing
 
-        if platform != "darwin":  # fail safe - parallel computing not working on M1 macs for now
+        if platform != "darwin":  # fail-safe - parallel computing not working on M1 macs for now
             with WorkerPool(n_jobs=10, start_method='fork') as pool:
                 pool.set_shared_objects(shared)
                 background_fractions = pool.map(patch_background_fraction, list(edges_to_test), progress_bar=True)
@@ -431,10 +427,9 @@ class PreProcessor:
         # 3. Create dataframe
         coord_x = edges_to_test[valid_patches, 0]
         coord_y = edges_to_test[valid_patches, 1]
-        df_out = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y})
+        df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y})
 
-        cur_dataset = {'header': self.config, 'dataframe': df_out}
-        return cur_dataset
+        return df_export
 
     def export_to_npy(self, row, cur_dataset):
 
@@ -460,7 +455,7 @@ class PreProcessor:
             print('WSI {}.npy: new file created and added current dataset.'.format(cid))
 
     # ----------------------------------------------------------------------------------------------------------------
-    def QueryAnnotations(self, dataset):
+    def QueryAnnotatedTiles(self, dataset):
 
         # Download and organise contours
         if self.config['CONTOURS']: dataset['contour_file'] = self.organise_contours(dataset)
@@ -470,7 +465,15 @@ class PreProcessor:
         for idx, row in dataset.iterrows():  # WSI wise
             cur_dataset = self.contours_processing(row)
             self.Create_Contours_Overlay_QA(row, cur_dataset)
-            df = df.append(cur_dataset,ignore_index=True)
-            #self.export_to_npy(self.config, row, cur_dataset)
+            df = df.append(cur_dataset, ignore_index=True)
+            print('--------------------------------------------------------------------------------')
+        return df
+
+    def QueryNonBackgroundTiles(self, dataset):
+
+        df = pd.DataFrame()
+        for idx, row in dataset.iterrows():
+            cur_dataset = self.inference_processing(row)
+            df = pd.concat([df, cur_dataset])
             print('--------------------------------------------------------------------------------')
         return df

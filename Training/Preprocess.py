@@ -25,8 +25,9 @@ print(dataset)
 # 2. Pre-processing: create npy files
 
 preprocessor = PreProcessor(config)
-coords_file = preprocessor.QueryAnnotations(dataset)
+coords_file = preprocessor.QueryAnnotatedTiles(dataset)
 print(coords_file)
+config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
 del preprocessor
 
 # todo: export current coords_file to numpy. One can then skip preprocessing by using LoadFileParameter.
