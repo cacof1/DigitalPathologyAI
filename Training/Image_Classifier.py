@@ -1,6 +1,6 @@
 import os
 from Dataloader.Dataloader import *
-from preprocessing.PreProcessingTools import PreProcessor
+from PreProcessing.PreProcessingTools import PreProcessor
 import toml
 from Utils import GetInfo
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -15,8 +15,8 @@ from Model.ConvNet import ConvNet
 # Load configuration file and name
 config = toml.load(sys.argv[1])
 
-datasets = QueryFromServer(config)
-Synchronize(config, datasets)
+dataset = QueryFromServer(config)
+Synchronize(config, dataset)
 name = GetInfo.format_model_name(config)
 
 # Set up all logging (if training)
@@ -37,7 +37,7 @@ if config['MODEL']['Inference'] is False:
 pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
 
 # Load coords_file
-coords_file = LoadFileParameter(config, datasets)
+coords_file = LoadFileParameter(config, dataset)
 
 # Augment data on the training set
 if config['AUGMENTATION']['Rand_Operations'] > 0:

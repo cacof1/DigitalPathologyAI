@@ -20,6 +20,7 @@ config = toml.load(sys.argv[1])
 dataset = QueryFromServer(config)
 Synchronize(config, dataset)
 print(dataset)
+
 ########################################################################################################################
 # 2. Pre-processing: create npy files
 
@@ -28,29 +29,30 @@ coords_file = preprocessor.QueryAnnotations(dataset)
 print(coords_file)
 del preprocessor
 
+# todo: export current coords_file to numpy. One can then skip preprocessing by using LoadFileParameter.
+
 ########################################################################################################################
 # 3. Model training
 
 name = GetInfo.format_model_name(config)
 
 # Set up all logging (if training)
-
 if 'logger_folder' in config['CHECKPOINT']:
     logger = TensorBoardLogger(os.path.join('lightning_logs', config['CHECKPOINT']['logger_folder']), name=name)
 else:
     logger = TensorBoardLogger('lightning_logs', name=name)
 lr_monitor = LearningRateMonitor(logging_interval='step')
-checkpoint_callback = ModelCheckpoint(dirpath=config['MODEL']['Model_Save_Path'],
+checkpoint_callback = ModelCheckpoint(dirpath=config['CHECKPOINT']['Model_Save_Path'],
                                       monitor=config['CHECKPOINT']['Monitor'],
                                       filename=name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' +
                                       config['CHECKPOINT']['Monitor'] + ':.2f}',
                                       save_top_k=1,
                                       mode=config['CHECKPOINT']['Mode'])
 
-pl.seed_everything(config['MODEL']['Random_Seed'], workers=True)
+pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 
 # Load coords_file
-#coords_file = LoadFileParameter(config, ids)
+# coords_file = LoadFileParameter(config, dataset)
 
 # Augment data on the training set
 if config['AUGMENTATION']['Rand_Operations'] > 0:
@@ -77,7 +79,7 @@ else:
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-# No data augmentation on the validation settens
+# No data augmentation on the validation set
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
     transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
@@ -87,17 +89,17 @@ val_transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-if config['MODEL']['Inference'] is False:  # train
+if config['ADVANCEDMODEL']['Inference'] is False:  # train
     data = DataModule(
         coords_file,
-        batch_size=config['MODEL']['Batch_Size'],
+        batch_size=config['BASEMODEL']['Batch_Size'],
         train_transform=train_transform,
         val_transform=val_transform,
         train_size=config['DATA']['Train_Size'],
         val_size=config['DATA']['Val_Size'],
         inference=False,
-        dim_list=config['DATA']['Patch_Size'],
-        vis_list=config['DATA']['Vis'],
+        dim_list=config['BASEMODEL']['Patch_Size'],
+        vis_list=config['BASEMODEL']['Vis'],
         n_per_sample=config['DATA']['N_Per_Sample'],
         target=config['DATA']['Label_Name'],
         sampling_scheme=config['DATA']['Sampling_Scheme']
@@ -106,16 +108,16 @@ if config['MODEL']['Inference'] is False:  # train
 
 else:  # prediction does not use train/validation sets, only directly the dataloader.
     data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=True),
-                      batch_size=config['MODEL']['Batch_Size'],
+                      batch_size=config['BASEMODEL']['Batch_Size'],
                       num_workers=10,
                       shuffle=False,
                       pin_memory=True)
 
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 # From paper: Class-balanced Loss Based on Effective Number of Samples
-if config['MODEL']['Inference']:
+if config['ADVANCEDMODEL']['Inference']:
     config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
-if config['MODEL']['Inference'] is False:
+if config['ADVANCEDMODEL']['Inference'] is False:
     config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
     #npatches_per_class = GetInfo.ShowTrainValTestInfo(data, config)
 
@@ -130,10 +132,10 @@ if config['MODEL']['Inference'] is False:
     # note: all the above could be moved directly into the ConvNet model.
 
 # Load model and train/infer
-if config['MODEL']['Inference'] is False:  # train
+if config['ADVANCEDMODEL']['Inference'] is False:  # train
 
-    trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['MODEL']['Max_Epochs'],
-                         precision=config['MODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor],
+    trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
+                         precision=config['BASEMODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor],
                          logger=logger)
 
     model = ConvNet(config)
@@ -141,8 +143,8 @@ if config['MODEL']['Inference'] is False:  # train
 
 else:  # infer
 
-    trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['MODEL']['Precision'])
-    model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['MODEL']['Model_Save_Path'])
+    trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['BASEMODEL']['Precision'])
+    model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['CHECKPOINT']['Model_Save_Path'])
     model.eval()
     predictions = trainer.predict(model, data)
     predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))

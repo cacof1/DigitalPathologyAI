@@ -159,8 +159,8 @@ class PreProcessor:
             print('Unsupported number of visibility levels, using the first one: {}'.format(self.vis))
 
         # Robustness to various forms of Patch_Size
-        self.patch_size = copy.copy(config['DATA']['Patch_Size'][0])
-        if len(config['DATA']['Patch_Size']) > 1:
+        self.patch_size = copy.copy(config['BASEMODEL']['Patch_Size'][0])
+        if len(config['BASEMODEL']['Patch_Size']) > 1:
             print('Unsupported number of patch sizes, using the first one: {}'.format(self.patch_size))
 
         # Create some paths that are always the same defined with respect to the data folder.
@@ -183,6 +183,9 @@ class PreProcessor:
 
         # For each WSI to be processed, contains the index of the dataset to write to in the .npy file
         self.WSI_processing_index = None
+
+        # Maps a contour name from Omero to a list of contour specified in config file
+        self.preprocessing_mapping = {}
 
     def Create_Contours_Overlay_QA(self, row, df_export):
 
@@ -290,9 +293,6 @@ class PreProcessor:
             values = [ctr.split(':')[1] for ctr in self.config['CONTOURS']['Contour_Mapping']]
             dict_contours_to_map = dict(zip(keys, values))
             unique_contour_names_mapped = []
-
-            dict_mapped_contours_label = dict(zip(set(values), np.arange(len(set(values)))))
-            unique_contour_names_mapped_label = []
             count_catch_contour = 0
 
             for ctr_nm in list(unique_contour_names):
@@ -302,35 +302,22 @@ class PreProcessor:
 
                 if any(loc):  # if the contour exists in the mapping
                     unique_contour_names_mapped.append(dict_contours_to_map[ctr_nm])
-                    unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map[ctr_nm]])
 
                 elif any(loc_star):  # if the contour exists, but it's in the format contour*
                     dict_key = [k for ki, k in enumerate(dict_contours_to_map.keys()) if loc_star[ki]][0]
                     unique_contour_names_mapped.append(dict_contours_to_map[dict_key])
-                    unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map[dict_key]])
 
                 elif 'remaining' in keys:  # shortcut to assign all other contours to dict_contours_to_map['remaining']
                     unique_contour_names_mapped.append(dict_contours_to_map['remaining'])
-                    unique_contour_names_mapped_label.append(dict_mapped_contours_label[dict_contours_to_map['remaining']])                        
 
                 else:  # otherwise, use the contour, do not modify it.
                     unique_contour_names_mapped.append(ctr_nm)
-                    unique_contour_names_mapped_label.append(count_catch_contour + len(set(values)))
                     count_catch_contour += 1
 
         else:
             unique_contour_names_mapped = unique_contour_names
-            unique_contour_names_mapped_label = np.arange(len(unique_contour_names_mapped))
 
-        Full_Contour_Mapping = {'contour_name': unique_contour_names,
-                                'mapped_contour_name': unique_contour_names_mapped,
-                                'contour_id': unique_contour_names_mapped_label}
-
-        # Create pd dataframe that provides the mapping between contour_name and contour_id, add it to header.
-        self.config['PREPROCESSING_MAPPING'] = pd.DataFrame(Full_Contour_Mapping)
-        # out_mapping = os.path.join(self.patches_folder, 'mapping.csv')
-        # df_mapping.to_csv(out_mapping)
-        # print('Mapping exported at: {}'.format(out_mapping))
+        self.preprocessing_mapping = dict(zip(unique_contour_names, unique_contour_names_mapped))
 
         return contour_files
 
@@ -351,7 +338,7 @@ class PreProcessor:
         for i in range(len(df)):
             ROI_name = df['Text'][i].lower()
             print('Processing ROI "{}" ({}/{}) of ID "{}": '.format(ROI_name, str(i + 1), str(len(df)), str(row['id_external'])),end='')            
-            if ROI_name not in self.config['PREPROCESSING_MAPPING']['contour_name'].values: print('ROI not within selected contours, skipping.')
+            if ROI_name not in self.preprocessing_mapping.keys(): print('ROI not within selected contours, skipping.')
             else:
                 print('Found contours, processing.')
                 coords = split_ROI_points(df['Points'][i]).astype(int)
@@ -410,7 +397,7 @@ class PreProcessor:
                     for ei in tqdm(range(len(edges_to_test))): isInROI[ei] = tile_membership_contour(shared, edges_to_test[ei, :])
                 coord_x.extend(edges_to_test[isInROI, 0])
                 coord_y.extend(edges_to_test[isInROI, 1])
-                label.extend(np.full(len(np.where(isInROI)[0]),ROI_name))
+                label.extend(np.full(len(np.where(isInROI)[0]), self.preprocessing_mapping[ROI_name]))
 
         df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y, 'tissue_type': label})
         df_export['SVS_PATH'] = row['SVS_PATH']
