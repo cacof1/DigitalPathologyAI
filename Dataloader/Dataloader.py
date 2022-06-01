@@ -66,7 +66,6 @@ class DataModule(LightningDataModule):
         self.batch_size = batch_size
 
         le = preprocessing.LabelEncoder()
-        print(coords_file[target])
         coords_file[target] = le.fit_transform(coords_file[target])
         
         if sampling_scheme.lower() == 'wsi':
@@ -111,7 +110,7 @@ def gather_WSI_npy_indexes(config, npy_file):#, overwrite=True, verbose=False):
 
     # Identify session type
     preprocessing_session = False
-    if config['DATA']['Label_Name'].lower() == 'tissue_type':
+    if config['DATA']['Label'].lower() == 'tissue_type':
         if verbose:
             print('Assuming pre-processing session.')
         preprocessing_session = True

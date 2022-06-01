@@ -8,8 +8,6 @@ import transformers  # from hugging face
 
 
 # Basic implementation of a convolutional neural network based on common backbones (any in torchvision.models)
-
-
 class ConvNet(pl.LightningModule):
 
     def __init__(self, config):

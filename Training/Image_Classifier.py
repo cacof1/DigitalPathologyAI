@@ -82,7 +82,7 @@ if config['MODEL']['Inference'] is False:  # train
         dim_list=config['DATA']['Patch_Size'],
         vis_list=config['DATA']['Vis'],
         n_per_sample=config['DATA']['N_Per_Sample'],
-        target=config['DATA']['Label_Name'],
+        target=config['DATA']['Label'],
         sampling_scheme=config['DATA']['Sampling_Scheme']
     )
     config['DATA']['N_Training_Examples'] = data.train_data.__len__()
@@ -145,9 +145,9 @@ else:  # infer
     predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))
 
     for i in range(predicted_classes_prob.shape[1]):
-        print('Adding the column ' + '"prob_' + config['DATA']['Label_Name'] + str(i) + '"...')
+        print('Adding the column ' + '"prob_' + config['DATA']['Label'] + str(i) + '"...')
         SaveFileParameter(config, coords_file, predicted_classes_prob[:, i],
-                          'prob_' + config['DATA']['Label_Name'] + str(i))
+                          'prob_' + config['DATA']['Label'] + str(i))
 
 
 

@@ -39,14 +39,6 @@ def connect(hostname, username, password, **kwargs):
     return conn
 
 
-def disconnect(conn):
-    """
-    Disconnect from an OMERO server
-    :param conn: The BlitzGateway
-    """
-    conn.close()
-
-
 def print_obj(obj, indent=0):
     """
     Helper method to display info about OMERO objects.
@@ -183,7 +175,7 @@ def download_omero_ROIs(config, dataset, download_path=None):
         export_file = Path(download_path, image_name + '_roi_measurements.csv')
         df.to_csv(export_file)
         print('OMERO: {}/{} ROIs exported to location: {}'.format(len(ROI_name), str(image.getROICount()), export_file))
-                                                                
+    conn.close()
 
 
 def list_project_files(host=None, user=None, pw=None, target_group=None, target_member=None):
