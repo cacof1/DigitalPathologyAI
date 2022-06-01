@@ -51,7 +51,7 @@ checkpoint_callback = ModelCheckpoint(dirpath=config['CHECKPOINT']['Model_Save_P
                                       mode=config['CHECKPOINT']['Mode'])
 
 pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
-
+print(coords_file)
 # Load coords_file
 # coords_file = LoadFileParameter(config, dataset)
 
@@ -107,18 +107,18 @@ target=config['DATA']['Label'],
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 # Return some stats/information on the training/validation data (to explore the dataset / sanity check)
 # From paper: Class-balanced Loss Based on Effective Number of Samples
-config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
-    #npatches_per_class = GetInfo.ShowTrainValTestInfo(data, config)
+#config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes']))#.float()
+#npatches_per_class = GetInfo.ShowTrainValTestInfo(data, config)
 
-    # The following will be used in an upcoming release to add weights to labels. This will be packaged in a function:
-    # N = sum(npatches_per_class)
-    # beta = (N-1)/N
-    # effective_samples = (1 - beta**npatches_per_class)/(1-beta)
-    # raw_scores = 1 / effective_samples
-    # w = config['DATA']['N_Classes'] * raw_scores / sum(raw_scores)
-    # config['INTERNAL']['weights'] = torch.tensor(w).float()
-    # print(config['INTERNAL']['weights'])
-    # note: all the above could be moved directly into the ConvNet model.
+# The following will be used in an upcoming release to add weights to labels. This will be packaged in a function:
+# N = sum(npatches_per_class)
+# beta = (N-1)/N
+# effective_samples = (1 - beta**npatches_per_class)/(1-beta)
+# raw_scores = 1 / effective_samples
+# w = config['DATA']['N_Classes'] * raw_scores / sum(raw_scores)
+# config['INTERNAL']['weights'] = torch.tensor(w).float()
+# print(config['INTERNAL']['weights'])
+# note: all the above could be moved directly into the ConvNet model.
 
 # Load model and train
 

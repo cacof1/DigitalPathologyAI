@@ -46,7 +46,7 @@ class DataGenerator(torch.utils.data.Dataset):
             return data_dict
 
         else:
-            label = int(round(self.coords[self.target].iloc[id]))
+            label = self.coords[self.target].iloc[id]
             if self.target_transform:
                 label = self.target_transform(label)
             return data_dict, label
