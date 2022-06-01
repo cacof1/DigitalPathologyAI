@@ -13,8 +13,8 @@ from Model.ConvNet import ConvNet
 from Dataloader.Dataloader import *
 
 
-config = toml.load(sys.argv[1])
-#config = toml.load('/Users/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/infer_tumour_convnet_6classes.ini')
+# config = toml.load(sys.argv[1])
+config = toml.load('/Users/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Training/config_files/preprocessing/infer_tumour_convnet_6classes.ini')
 
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
@@ -27,7 +27,7 @@ print(dataset)
 # 2. Pre-processing: create npy files
 
 preprocessor = PreProcessor(config)
-coords_file = preprocessor.QueryNonBackgroundTiles(dataset)
+coords_file = preprocessor.getTilesFromNonBackground(dataset)
 print(coords_file)
 del preprocessor
 
@@ -54,6 +54,8 @@ data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=
                   num_workers=10,
                   shuffle=False,
                   pin_memory=True)
+
+config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['BASEMODEL']['Precision'])
 model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['CHECKPOINT']['Model_Save_Path'])

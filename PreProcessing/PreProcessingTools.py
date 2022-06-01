@@ -150,8 +150,8 @@ class PreProcessor:
         self.config = config
 
         # Robustness to various forms of Vis
-        self.vis = copy.copy(config['DATA']['Vis'][0])
-        if len(config['DATA']['Vis']) > 1:
+        self.vis = copy.copy(config['BASEMODEL']['Vis'][0])
+        if len(config['BASEMODEL']['Vis']) > 1:
             print('Unsupported number of visibility levels, using the first one: {}'.format(self.vis))
 
         # Robustness to various forms of Patch_Size
@@ -431,31 +431,8 @@ class PreProcessor:
 
         return df_export
 
-    def export_to_npy(self, row, cur_dataset):
-
-        n = self.WSI_processing_index[idx]
-        patch_npy_export_filename = Path(self.patches_folder, dataset['id_external'] + '.npy')
-
-        if patch_npy_export_filename.is_file():  #replace
-            datasets = list(np.load(patch_npy_export_filename, allow_pickle=True))
-            N = len(datasets)
-
-            if n == N:  # append to file
-                datasets.append(cur_dataset)
-                np.save(patch_npy_export_filename, datasets)
-                print('WSI {}.npy: appended current dataset to existing file.'.format(cid))
-
-            elif (n >= 0) and (n < N):
-                datasets[n]['dataframe'] = pd.merge(datasets[n]['dataframe'], cur_dataset['dataframe'])
-                print('WSI {}.npy: merged current dataset with previous dataset of existing file.'.format(cid))
-                # TODO: test if merge works. Has not been validated yet.
-
-        else:  # create new file
-            np.save(patch_npy_export_filename, [cur_dataset])
-            print('WSI {}.npy: new file created and added current dataset.'.format(cid))
-
     # ----------------------------------------------------------------------------------------------------------------
-    def QueryAnnotatedTiles(self, dataset):
+    def getTilesFromAnnotations(self, dataset):
 
         # Download and organise contours
         if self.config['CONTOURS']: dataset['contour_file'] = self.organise_contours(dataset)
@@ -469,7 +446,7 @@ class PreProcessor:
             print('--------------------------------------------------------------------------------')
         return df
 
-    def QueryNonBackgroundTiles(self, dataset):
+    def getTilesFromNonBackground(self, dataset):
 
         df = pd.DataFrame()
         for idx, row in dataset.iterrows():
