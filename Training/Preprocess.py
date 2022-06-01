@@ -19,7 +19,7 @@ config = toml.load(sys.argv[1])
 
 dataset = QueryFromServer(config)
 Synchronize(config, dataset)
-print(dataset)
+
 
 ########################################################################################################################
 # 2. Pre-processing: create npy files
@@ -55,7 +55,7 @@ checkpoint_callback = ModelCheckpoint(dirpath=config['CHECKPOINT']['Model_Save_P
                                       mode=config['CHECKPOINT']['Mode'])
 
 pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
-
+print(coords_file)
 # Load coords_file
 # coords_file = LoadFileParameter(config, dataset)
 
@@ -94,7 +94,6 @@ val_transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-
 data = DataModule(
     coords_file,
     batch_size=config['BASEMODEL']['Batch_Size'],
@@ -124,7 +123,7 @@ config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).flo
 # print(config['INTERNAL']['weights'])
 # note: all the above could be moved directly into the ConvNet model.
 
-# Load model and train/infer
+# Load model and train
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
                      precision=config['BASEMODEL']['Precision'], callbacks=[checkpoint_callback, lr_monitor],
                      logger=logger)

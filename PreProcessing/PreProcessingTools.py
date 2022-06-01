@@ -207,7 +207,7 @@ class PreProcessor:
         # For visual aide: show all colors in the bottom left corner.
         #legend_coords    = np.array([np.arange(0, N_classes * patch_size[0], patch_size[0]), np.zeros(N_classes)]).T
         #legend_label    = all_possible_labels
-        #numerical_labels = np.concatenate((all_possible_labels, df_export[self.config['DATA']['Label_Name']].values + 1), axis=0)
+        #numerical_labels = np.concatenate((all_possible_labels, df_export[self.config['DATA']['Label']].values + 1), axis=0)
         #all_coords       = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
 
         # Broken for now - will be fixed in the next update. This will just not display QA maps.
@@ -429,9 +429,8 @@ class PreProcessor:
         coord_y = edges_to_test[valid_patches, 1]
         df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y})
         df_export['SVS_PATH'] = row['SVS_PATH']
-
         return df_export
-
+    
     # ----------------------------------------------------------------------------------------------------------------
     def getTilesFromAnnotations(self, dataset):
 
@@ -452,6 +451,6 @@ class PreProcessor:
         df = pd.DataFrame()
         for idx, row in dataset.iterrows():
             cur_dataset = self.inference_processing(row)
-            df = pd.concat([df, cur_dataset])
+            df = df.append(cur_dataset,ignore_index=True)
             print('--------------------------------------------------------------------------------')
         return df

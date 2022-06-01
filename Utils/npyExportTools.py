@@ -6,22 +6,11 @@ import pandas as pd
 from deepdiff import DeepDiff
 # from openpyxl.styles.alignment import Alignment
 import os
-
-
 # import xlsxwriter
-
 
 def remove_dict_keys(d, blacklist):
     return {k: d[k] for k in d if k not in blacklist}
 
-
-def compare_dicts(d1, d2):
-    deep_differences = DeepDiff(d1, d2, ignore_order=True)
-
-    if len(deep_differences) == 0:
-        return True
-    else:
-        return False
 
 
 def basemodel_to_str(config):
