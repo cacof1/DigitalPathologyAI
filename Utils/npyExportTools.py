@@ -22,6 +22,18 @@ def compare_dicts(d1, d2):
         return False
 
 
+def basemodel_to_str(config):
+    """Converts config['BASEMODEL'] dict to a string."""
+
+    bs = ''
+    d = config['BASEMODEL']
+
+    for k in sorted(d.keys()):
+
+        bs += k + '_' + str(d[k]) + ('_' if k != sorted(d.keys())[-1] else '')
+
+    return bs
+
 def adjust_df_to_excel_columns(writer, df, sheet):
     # TODO: work in progress. Does not work well with xlsxwriter yet.
 

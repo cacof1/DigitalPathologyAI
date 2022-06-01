@@ -6,7 +6,7 @@ def ShowTrainValTestInfo(data, config):
 
     target = config['DATA']['Label_Name']
 
-    if config['MODEL']['Inference'] is False:
+    if config['ADVANCEDMODEL']['Inference'] is False:
 
         label_counter = np.zeros(len(data.train_data.coords[target].unique()))
 
@@ -54,49 +54,49 @@ def format_model_name(config):
     # This format has been validated (and designed specifically) for the sarcoma classification problem.
     # It may work with other models, or require adaptation.
 
-    if config['MODEL']['Inference'] is False:
+    if config['ADVANCEDMODEL']['Inference'] is False:
 
         # ----------------------------------------------------------------------------------------------------------------
         # Model block
         model_block = 'empty_model'
-        if config['MODEL']['Base_Model'].lower() == 'vit':
-            model_block = '_d' + str(config['MODEL']['Depth']) +\
-                         '_emb' + str(config['MODEL']['Emb_size']) +\
-                         '_h' + str(config['MODEL']['N_Heads_ViT']) +\
+        if config['BASEMODEL']['Model'].lower() == 'vit':
+            model_block = '_d' + str(config['ADVANCEDMODEL']['Depth_ViT']) +\
+                         '_emb' + str(config['ADVANCEDMODEL']['Emb_size_ViT']) +\
+                         '_h' + str(config['ADVANCEDMODEL']['N_Heads_ViT']) +\
                          '_subP' + str(config['DATA']['Sub_Patch_Size'])
 
-        elif config['MODEL']['Base_Model'].lower() == 'convnet':
-            pre = '_pre' if config['MODEL']['Pretrained'] is True else ''
-            model_block = '_' + config['MODEL']['Backbone'] + pre +\
-                         '_drop' + str(config['MODEL']['Drop_Rate'])
+        elif config['BASEMODEL']['Model'].lower() == 'convnet':
+            pre = '_pre' if config['ADVANCEDMODEL']['Pretrained'] is True else ''
+            model_block = '_' + config['BASEMODEL']['Backbone'] + pre +\
+                         '_drop' + str(config['ADVANCEDMODEL']['Drop_Rate'])
 
-        elif config['MODEL']['Base_Model'].lower() == 'convnext':
-            pre = 'pre' if config['MODEL']['Pretrained'] is True else ''
+        elif config['BASEMODEL']['Model'].lower() == 'convnext':
+            pre = 'pre' if config['ADVANCEDMODEL']['Pretrained'] is True else ''
             model_block = '_' + pre +\
-                          '_drop' + str(config['MODEL']['Drop_Rate']) +\
-                         '_LS' + str(config['MODEL']['Layer_Scale']) +\
+                          '_drop' + str(config['ADVANCEDMODEL']['Drop_Rate']) +\
+                         '_LS' + str(config['ADVANCEDMODEL']['Layer_Scale']) +\
                          '_SD' + str(config['REGULARIZATION']['Stoch_Depth'])
 
         # ----------------------------------------------------------------------------------------------------------------
         # General model parameters block
 
         dimstr = ''
-        for dim in range(len(config['DATA']['Patch_Size'])):
-            dimstr = dimstr + str(config['DATA']['Patch_Size'][dim][0]) + '_'
+        for dim in range(len(config['BASEMODEL']['Patch_Size'])):
+            dimstr = dimstr + str(config['BASEMODEL']['Patch_Size'][dim][0]) + '_'
 
         visstr = ''
-        for vis in range(len(config['DATA']['Vis'])):
-            visstr = visstr + str(config['DATA']['Vis'][dim]) + '_'
+        for vis in range(len(config['BASEMODEL']['Vis'])):
+            visstr = visstr + str(config['BASEMODEL']['Vis'][dim]) + '_'
 
         main_block = '_dim' + dimstr +\
                      'vis' + visstr +\
-                     'b' + str(config['MODEL']['Batch_Size']) +\
+                     'b' + str(config['BASEMODEL']['Batch_Size']) +\
                      '_N' + str(config['DATA']['N_Classes']) +\
                      '_n' + str(config['DATA']['N_Per_Sample']) +\
-                     '_epochs' + str(config['MODEL']['Max_Epochs']) +\
+                     '_epochs' + str(config['ADVANCEDMODEL']['Max_Epochs']) +\
                      '_train' + str(int(100 * config['DATA']['Train_Size'])) +\
                      '_val' + str(int(100 * config['DATA']['Val_Size'])) +\
-                     '_seed' + str(config['MODEL']['Random_Seed'])
+                     '_seed' + str(config['ADVANCEDMODEL']['Random_Seed'])
 
         # ----------------------------------------------------------------------------------------------------------------
         # Optimisation block (all methods)
@@ -118,7 +118,7 @@ def format_model_name(config):
 
         # ----------------------------------------------------------------------------------------------------------------
         # Regularization block (all methods), includes CF due to label smoothing
-        reg_block = '_' + str(config['MODEL']['Loss_Function']) +\
+        reg_block = '_' + str(config['BASEMODEL']['Loss_Function']) +\
                     '_LS' + str(config['REGULARIZATION']['Label_Smoothing'])
 
         # ----------------------------------------------------------------------------------------------------------------
@@ -137,7 +137,7 @@ def format_model_name(config):
         time_block = '_' + date.today().strftime("%b-%d")
 
         # Append final information
-        name = config['MODEL']['Base_Model'] + model_block + main_block + optim_block + sched_block + reg_block +\
+        name = config['BASEMODEL']['Model'] + model_block + main_block + optim_block + sched_block + reg_block +\
             QC_block + DA_block + time_block
 
 
@@ -147,6 +147,6 @@ def format_model_name(config):
     else:
 
         # Create a name using the pre-trained model path (without its .ckt extension)
-        name = 'Inference_using_' + config['MODEL']['Model_Save_Path'].split(os.path.sep)[-1][:-5]
+        name = 'Inference_using_' + config['CHECKPOINT']['Model_Save_Path'].split(os.path.sep)[-1][:-5]
 
     return name

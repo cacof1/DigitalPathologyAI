@@ -16,20 +16,20 @@ class ConvNet(pl.LightningModule):
         super().__init__()
         self.config = config
 
-        self.backbone = getattr(models, config['MODEL']['Backbone'])
-        if 'densenet' in config['MODEL']['Backbone']:
-            self.backbone = self.backbone(pretrained=config['MODEL']['Pretrained'],
-                                          drop_rate=config['MODEL']['Drop_Rate'])
+        self.backbone = getattr(models, config['BASEMODEL']['Backbone'])
+        if 'densenet' in config['BASEMODEL']['Backbone']:
+            self.backbone = self.backbone(pretrained=config['ADVANCEDMODEL']['Pretrained'],
+                                          drop_rate=config['ADVANCEDMODEL']['Drop_Rate'])
         else:
-            self.backbone = self.backbone(pretrained=config['MODEL']['Pretrained'])
+            self.backbone = self.backbone(pretrained=config['ADVANCEDMODEL']['Pretrained'])
 
-        self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["Loss_Function"])()
+        self.loss_fcn = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
 
-        if self.config['MODEL']['Loss_Function'] == 'CrossEntropyLoss':  # there is a bug currently. Quick fix...
+        if self.config['BASEMODEL']['Loss_Function'] == 'CrossEntropyLoss':  # there is a bug currently. Quick fix...
             self.loss_fcn = torch.nn.CrossEntropyLoss(weight=config['INTERNAL']['weights'],
                                                       label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
 
-        self.activation = getattr(torch.nn, self.config["MODEL"]["Activation"])()
+        self.activation = getattr(torch.nn, self.config["BASEMODEL"]["Activation"])()
         out_feats = list(self.backbone.children())[-1].out_features
         self.model = nn.Sequential(
             self.backbone,
@@ -90,8 +90,8 @@ class ConvNet(pl.LightningModule):
         if self.config['SCHEDULER']['Type'] == 'cosine_warmup':
             # https://huggingface.co/docs/transformers/main_classes/optimizer_schedules
             # https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
-            n_steps_per_epoch = self.config['DATA']['N_Training_Examples'] // self.config['MODEL']['Batch_Size']
-            total_steps = n_steps_per_epoch * self.config['MODEL']['Max_Epochs']
+            n_steps_per_epoch = self.config['DATA']['N_Training_Examples'] // self.config['BASEMODEL']['Batch_Size']
+            total_steps = n_steps_per_epoch * self.config['ADVANCEDMODEL']['Max_Epochs']
             warmup_steps = self.config['SCHEDULER']['Cos_Warmup_Epochs'] * n_steps_per_epoch
 
             sched = transformers.optimization.get_cosine_schedule_with_warmup(optimizer,

@@ -1,16 +1,10 @@
-import matplotlib.pyplot as plt
-from pytorch_lightning import LightningDataModule, LightningModule, Trainer, seed_everything
+from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
-import pandas as pd
-from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
 import openslide
-import numpy as np
 import torch
-import glob
-import os
-import omero
+import npyExportTools
 import itertools
 import Utils.sampling_schemes as sampling_schemes
 from Utils.OmeroTools import *
@@ -230,41 +224,31 @@ def gather_WSI_npy_indexes(config, npy_file):#, overwrite=True, verbose=False):
 
 
 def LoadFileParameter(config, dataset):
-    patch_folder = Path(config['DATA']['SVS_Folder'], 'patches')
-    coords_file  = pd.DataFrame()
-    for file_nb, file_id in enumerate(dataset['ids']):
-        try:
-            npy_file = np.load(dataset['npy_path'][file_nb])
-            coords   = gather_WSI_npy_indexes(config, npy_file)
-            coords   = coords.astype({"coords_y": int, "coords_x": int})
-            coords['SVS_PATH'] = str(dataset['SVS_PATH'])
 
-            if file_nb == 0: coords_file = coords
-            else: coords_file = pd.concat([coords_file, coords])
-        except:
-            print('Unable to find patch data for file {}.npy'.format(file_id))
-            continue
+    cur_basemodel_str = npyExportTools.basemodel_to_str(config)
+    coords_file = pd.DataFrame()
+
+    for svs_path in dataset.SVS_PATH:
+        npy_path = os.path.join(os.path.split(svs_path)[0], 'patches', os.path.split(svs_path)[1].replace('svs', 'npy'))
+        coords_file = pd.concat([coords_file, np.load(npy_path, allow_pickle=True).item()[cur_basemodel_str][1]])
 
     return coords_file
 
 
 def SaveFileParameter(config, df, column_to_add, label_to_add):
 
-    ids = df.file_id.unique()  # Gather list of ids you processed
-    WSI_processing_index = gather_WSI_npy_indexes(config, ids)
-    id_dict = dict(zip(ids, WSI_processing_index))  # set in dict to use in df loop below
-    patch_folder = os.path.join(config['DATA']['SVS_Folder'], 'patches')
     df[label_to_add] = pd.Series(column_to_add, index=df.index)
     df = df.fillna(0)
 
-    for file_id, df_split in df.groupby(df.file_id):
-        npy_file_path = os.path.join(patch_folder, str(file_id) + ".npy")
-        datasets = np.load(npy_file_path, allow_pickle=True)
-        datasets[id_dict[file_id]]['coords'] = df_split.copy()
-        np.save(npy_file_path, datasets)
+    cur_basemodel_str = npyExportTools.basemodel_to_str(config)
 
-        # Also output an excel sheet of the svs. For debugging purposes.
-        npyExportTools.decode_npy(npy_file_path)
+    for svs_path, df_split in df.groupby(df.SVS_PATH):
+
+        npy_path = os.path.join(os.path.split(svs_path)[0], 'patches', os.path.split(svs_path)[1].replace('svs', 'npy'))
+        os.makedirs(os.path.split(npy_path)[0], exist_ok=True)  # in case folder is non-existent
+        npy_dict = np.load(npy_path, allow_pickle=True).item() if os.path.exists(npy_path) else {}
+        npy_dict[cur_basemodel_str] = [config, df_split.copy()]
+        np.save(npy_path, npy_dict)
 
 
 def QueryFromServer(config, **kwargs):
