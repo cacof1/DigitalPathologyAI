@@ -3,10 +3,10 @@ Set of tools to manage .npy creation to save patch data.
 """
 import numpy as np
 import pandas as pd
-#from openpyxl.styles.alignment import Alignment
+from deepdiff import DeepDiff
+# from openpyxl.styles.alignment import Alignment
 import os
-#import xlsxwriter
-
+# import xlsxwriter
 
 def remove_dict_keys(d, blacklist):
     return {k: d[k] for k in d if k not in blacklist}
@@ -20,23 +20,23 @@ def basemodel_to_str(config):
     d = config['BASEMODEL']
 
     for k in sorted(d.keys()):
-
         bs += k + '_' + str(d[k]) + ('_' if k != sorted(d.keys())[-1] else '')
 
     return bs
 
+
 def adjust_df_to_excel_columns(writer, df, sheet):
     # TODO: work in progress. Does not work well with xlsxwriter yet.
 
-    #ws = writer.sheets[sheet]
-    #format1 = xlsxwriter.workbook.add_format({'bold': True})
-    #format1.set_align('left')
+    # ws = writer.sheets[sheet]
+    # format1 = xlsxwriter.workbook.add_format({'bold': True})
+    # format1.set_align('left')
 
     for column in df:
         column_length = max(df[column].astype(str).map(len).max(), len(column))
         col_idx = df.columns.get_loc(column)
-        #print(column, col_idx+1, column_length)  # debugging purposes
-        writer.sheets[sheet].set_column(col_idx+1, col_idx+1, column_length)  # +1 to account for index
+        # print(column, col_idx+1, column_length)  # debugging purposes
+        writer.sheets[sheet].set_column(col_idx + 1, col_idx + 1, column_length)  # +1 to account for index
 
     # dims = {}
     # for row in ws.rows:

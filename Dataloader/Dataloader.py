@@ -234,10 +234,9 @@ def LoadFileParameter(config, dataset):
     return coords_file
 
 
-def SaveFileParameter(config, df, column_to_add, label_to_add):
 
-    df[label_to_add] = pd.Series(column_to_add, index=df.index)
-    df = df.fillna(0)
+def SaveFileParameter(config, df):
+
     cur_basemodel_str = npyExportTools.basemodel_to_str(config)
     for svs_path, df_split in df.groupby(df.SVS_PATH):
         npy_path = os.path.join(os.path.split(svs_path)[0], 'patches', os.path.split(svs_path)[1].replace('svs', 'npy'))
