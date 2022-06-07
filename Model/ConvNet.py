@@ -8,8 +8,6 @@ import transformers  # from hugging face
 
 
 # Basic implementation of a convolutional neural network based on common backbones (any in torchvision.models)
-
-
 class ConvNet(pl.LightningModule):
 
     def __init__(self, config, label_encoder=None):
@@ -29,8 +27,7 @@ class ConvNet(pl.LightningModule):
         self.loss_fcn = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
 
         if self.config['BASEMODEL']['Loss_Function'] == 'CrossEntropyLoss':  # there is a bug currently. Quick fix...
-            self.loss_fcn = torch.nn.CrossEntropyLoss(weight=config['DATA']['loss_weights'],
-                                                      label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
+            self.loss_fcn = torch.nn.CrossEntropyLoss(label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])#weight=config['INTERNAL']['weights'])
 
         self.activation = getattr(torch.nn, self.config["BASEMODEL"]["Activation"])()
         out_feats = list(self.backbone.children())[-1].out_features

@@ -17,7 +17,7 @@ config = toml.load(sys.argv[1])
 
 dataset = QueryFromServer(config)
 Synchronize(config, dataset)
-print(dataset)
+
 
 ########################################################################################################################
 # 2. Pre-processing: create npy files
@@ -51,8 +51,8 @@ checkpoint_callback = ModelCheckpoint(dirpath=config['CHECKPOINT']['Model_Save_P
                                       save_top_k=1,
                                       mode=config['CHECKPOINT']['Mode'])
 
-pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
-
+pl.seed_everything(config['ADVANCEDMODEL']
+                   
 # transforms: augment data on training set
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
@@ -88,7 +88,6 @@ val_transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-# Create LabelEncoder
 le = preprocessing.LabelEncoder()
 le.fit(coords_file[config['DATA']['Label']])
 

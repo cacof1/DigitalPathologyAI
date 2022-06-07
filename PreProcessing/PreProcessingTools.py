@@ -441,9 +441,8 @@ class PreProcessor:
         coord_y = edges_to_test[valid_patches, 1]
         df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y})
         df_export['SVS_PATH'] = row['SVS_PATH']
-
         return df_export
-
+    
     # ----------------------------------------------------------------------------------------------------------------
     def getTilesFromAnnotations(self, dataset):
 

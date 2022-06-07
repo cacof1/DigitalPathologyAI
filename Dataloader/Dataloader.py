@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
 import openslide
 import torch
-import npyExportTools
+#import npyExportTools
 import itertools
 import Utils.sampling_schemes as sampling_schemes
 from Utils.OmeroTools import *
@@ -46,7 +46,7 @@ class DataGenerator(torch.utils.data.Dataset):
             return data_dict
 
         else:
-            label = int(round(self.coords[self.target].iloc[id]))
+            label = self.coords[self.target].iloc[id]
             if self.target_transform:
                 label = self.target_transform(label)
             return data_dict, label
@@ -89,7 +89,6 @@ class DataModule(LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=10, pin_memory=True)
 
-
 def LoadFileParameter(config, dataset):
 
     cur_basemodel_str = npyExportTools.basemodel_to_str(config)
@@ -103,12 +102,11 @@ def LoadFileParameter(config, dataset):
     return coords_file
 
 
+
 def SaveFileParameter(config, df):
 
     cur_basemodel_str = npyExportTools.basemodel_to_str(config)
-
     for svs_path, df_split in df.groupby(df.SVS_PATH):
-
         npy_path = os.path.join(os.path.split(svs_path)[0], 'patches', os.path.split(svs_path)[1].replace('svs', 'npy'))
         os.makedirs(os.path.split(npy_path)[0], exist_ok=True)  # in case folder is non-existent
         npy_dict = np.load(npy_path, allow_pickle=True).item() if os.path.exists(npy_path) else {}

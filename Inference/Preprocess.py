@@ -34,7 +34,6 @@ print(coords_file)
 
 pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 
-# No data augmentation on the validation set
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
     transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
@@ -43,6 +42,7 @@ val_transform = transforms.Compose([
     transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+
 
 data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=True),
                   batch_size=config['BASEMODEL']['Batch_Size'],

@@ -4,7 +4,7 @@ import numpy as np
 
 def ShowTrainValTestInfo(data, config):
 
-    target = config['DATA']['Label_Name']
+    target = config['DATA']['Label']
 
     if config['ADVANCEDMODEL']['Inference'] is False:
 
