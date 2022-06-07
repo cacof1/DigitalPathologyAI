@@ -11,6 +11,7 @@ from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 
 config = toml.load(sys.argv[1])
+#config = toml.load('../Configs/preprocessing/trainer_tumour_convnet.ini')
 
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
@@ -51,7 +52,7 @@ checkpoint_callback = ModelCheckpoint(dirpath=config['CHECKPOINT']['Model_Save_P
                                       save_top_k=1,
                                       mode=config['CHECKPOINT']['Mode'])
 
-pl.seed_everything(config['ADVANCEDMODEL']
+pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'])
                    
 # transforms: augment data on training set
 if config['AUGMENTATION']['Rand_Operations'] > 0:
