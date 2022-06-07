@@ -8,7 +8,6 @@ from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 from Dataloader.Dataloader import *
 
-
 config = toml.load(sys.argv[1])
 
 ########################################################################################################################
@@ -19,22 +18,19 @@ Synchronize(config, dataset)
 print(dataset)
 
 ########################################################################################################################
-# 2. Pre-processing: create npy files
+# 2. Pre-processing: create npy files (background removal)
 
 # option #1: preprocessor + save to npy
 preprocessor = PreProcessor(config)
 coords_file = preprocessor.getTilesFromNonBackground(dataset)
 SaveFileParameter(config, coords_file)
 print(coords_file)
-del preprocessor
 
 # option #2: load existing
-#coords_file = LoadFileParameter(config, dataset)
+# coords_file = LoadFileParameter(config, dataset)
 
 ########################################################################################################################
 # 3. Model evaluation
-
-name = GetInfo.format_model_name(config)
 
 pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 
@@ -54,16 +50,17 @@ data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=
                   shuffle=False,
                   pin_memory=True)
 
-config['INTERNAL']['weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
-
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['BASEMODEL']['Precision'])
-model = ConvNet.load_from_checkpoint(config=config, checkpoint_path=config['CHECKPOINT']['Model_Save_Path'])
+model = ConvNet.load_from_checkpoint(checkpoint_path=config['CHECKPOINT']['Model_Save_Path'])
+
 model.eval()
 predictions = trainer.predict(model, data)
 predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))
 
-for i in range(predicted_classes_prob.shape[1]):
-    coords_file['prob_' + config['DATA']['Label'] + str(i)] = pd.Series(predicted_classes_prob[:, i],
+tissue_names = model.LabelEncoder.inverse_transform(np.arange(predicted_classes_prob.shape[1]))
+
+for tissue_no, tissue_name in enumerate(tissue_names):
+    coords_file['prob_' + config['DATA']['Label'] + '_' + tissue_name] = pd.Series(predicted_classes_prob[:, tissue_no],
                                                                         index=coords_file.index)
     coords_file = coords_file.fillna(0)
 

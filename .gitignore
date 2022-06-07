@@ -9,7 +9,8 @@ patches/
 PretrainedModel/
 Inference/wsi_core/
 /openslide-python/
-/Training/config_files/
+/Configs/preprocessing/
+/Configs/sarcoma/
 *.pyc
 *.pyc
-PreProcessing/Preprocess.py
+Utils/sarcoma_master.csv

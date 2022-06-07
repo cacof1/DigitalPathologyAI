@@ -1,5 +1,4 @@
 from Dataloader.Dataloader import *
-from PreProcessing.PreProcessingTools import PreProcessor
 import toml
 from Utils import GetInfo
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -9,6 +8,7 @@ from torchvision import transforms
 import torch
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
+from sklearn import preprocessing
 
 config = toml.load(sys.argv[1])
 
@@ -20,22 +20,38 @@ Synchronize(config, dataset)
 print(dataset)
 
 ########################################################################################################################
-# 2. Pre-processing: create npy files
+# 2. Pre-processing: load existing npy files, append target label to coords_file, select tumour tiles only.
 
-# option #1: preprocessor + save to npy
-preprocessor = PreProcessor(config)
-coords_file = preprocessor.getTilesFromAnnotations(dataset)
-SaveFileParameter(config, coords_file)
-print(coords_file)
+# Load pre-processed dataset. It should have been pre-processed with Inference/Preprocess.py first.
 
+# current issue: at the moment, LoadFileParameter will open existing preprocessings whose BASEMODEL fits with the
+# current one. If the preprocessing model was trained with a different architecture as the proposed one for the
+# sarcoma classifier, this code will not work as the BASEMODEL will differ. The usage of LoadFileParameter in
+# that context should be updated. For now, we use a dummy config['BASEMODEL'] with the correct preprocessing parameters.
+# todo: fix the above.
 
-# option #2: load an existing preprocessing dataset
-# coords_file = LoadFileParameter(config, dataset)
+config_inference = {'BASEMODEL': {'Activation': 'Identity', 'Backbone': 'resnet34', 'Model': 'convnet',
+                                  'Loss_Function': 'CrossEntropyLoss', 'Batch_Size': 4,
+                                  'Patch_Size': config['BASEMODEL']['Patch_Size'],
+                                  'Precision': config['BASEMODEL']['Precision'], 'Vis': config['BASEMODEL']['Vis']}}
+
+coords_file = LoadFileParameter(config_inference, dataset)
+
+# Mask the coords_file to only keep the tumour tiles, depending on a pre-set criteria.
+coords_file = coords_file[coords_file['prob_tissue_type_tumour'] > 0.94]
+
+# Append the target label to coords_file. If "diagnosis", make sure you also add the tumour grade at the end.
+coords_file[config['DATA']['Label']] = ''
+for index, row in dataset.iterrows():
+    label = row[config['DATA']['Label']] + row['tumour_grade'] if config['DATA']['Label'] == 'diagnosis' else ''
+    mask = coords_file.SVS_PATH == row.SVS_PATH
+    coords_file[config['DATA']['Label']][coords_file.SVS_PATH == row.SVS_PATH] = [label] * len(np.where(mask)[0])
 
 config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
 
 ########################################################################################################################
 # 3. Model training
+
 
 # Set up logging, model checkpoint
 name = GetInfo.format_model_name(config)
@@ -107,27 +123,15 @@ data = DataModule(
     sampling_scheme=config['DATA']['Sampling_Scheme'],
     label_encoder=le
 )
+
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 config['DATA']['loss_weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
-
-"""
-The following will be used in an upcoming release to add weights to labels.
-N = sum(npatches_per_class)
-beta = (N-1)/N
-effective_samples = (1 - beta**npatches_per_class)/(1-beta)
-raw_scores = 1 / effective_samples
-w = config['DATA']['N_Classes'] * raw_scores / sum(raw_scores)
-config['DATA']['loss_weights'] = torch.tensor(w).float()
-print(config['DATA']['loss_weights'])
-* note: all the above could be moved directly into the ConvNet model or packaged in a function within Utils/
-* reference: Class-balanced Loss Based on Effective Number of Samples, Cui et al CVPR 2019.
-"""
 
 # Give the user some insight on the data
 GetInfo.ShowTrainValTestInfo(data, config)
 
 # Load model and train
-trainer = pl.Trainer(gpus= torch.cuda.device_count(),
+trainer = pl.Trainer(gpus=torch.cuda.device_count(),
                      benchmark=True,
                      max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
                      precision=config['BASEMODEL']['Precision'],

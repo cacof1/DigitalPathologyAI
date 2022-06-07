@@ -56,10 +56,10 @@ for project in conn.listProjects():
 
                 # This is not 100% robust, but the ID can come from either leeds or rnoh_leica fields. Take this into
                 # consideration:
-                try:
+                if any(csv_file.leeds_id == image_name):
                     svs_index = csv_file[csv_file.leeds_id == image_name].index[0]
                     id_key = 'leeds_id'
-                except IndexError:
+                elif any(csv_file.rnoh_leica_id == image_name):
                     svs_index = csv_file[csv_file.rnoh_leica_id == image_name].index[0]
                     id_key = 'rnoh_leica_id'
 

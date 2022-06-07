@@ -187,14 +187,12 @@ class PreProcessor:
 
         ## Convert label to numerical value
         le = preprocessing.LabelEncoder()
-        numerical_label      = le.fit_transform(df_export['tissue_type'])
-        all_possible_labels  = np.array(df_export['tissue_type'])
-        all_numerical_labels = le.transform(all_possible_labels)
-            
+        numerical_labels      = le.fit_transform(df_export['tissue_type'])
+
         patch_size           = self.patch_size
         WSI_object           = openslide.open_slide(row['SVS_PATH'])
         vis_level_view       = len(WSI_object.level_dimensions) - 1  # always the lowest res vis level
-        N_classes            = len(all_possible_labels)
+        N_classes            = len(np.unique(numerical_labels))
 
         if N_classes <= 10: cmap = plt.get_cmap('Set1', lut=N_classes)           
         elif N_classes > 10 & N_classes <= 20: cmap = plt.get_cmap('tab20', lut=N_classes)        
@@ -204,30 +202,20 @@ class PreProcessor:
         cmap.N = N_classes
         cmap.colors = cmap.colors[0:N_classes]
 
-        # For visual aide: show all colors in the bottom left corner.
-        #legend_coords    = np.array([np.arange(0, N_classes * patch_size[0], patch_size[0]), np.zeros(N_classes)]).T
-        #legend_label    = all_possible_labels
-        #numerical_labels = np.concatenate((all_possible_labels, df_export[self.config['DATA']['Label_Name']].values + 1), axis=0)
-        #all_coords       = np.concatenate((legend_coords, np.array(df_export[["coords_x", "coords_y"]])), axis=0)
-
-        # Broken for now - will be fixed in the next update. This will just not display QA maps.
-        heatmap, overlay = generate_overlay(WSI_object, numerical_label, np.array(df_export[["coords_x", "coords_y"]]),
+        heatmap, overlay = generate_overlay(WSI_object, numerical_labels + 1, np.array(df_export[["coords_x", "coords_y"]]),
                                             vis_level=vis_level_view,
                                             patch_size=patch_size, cmap=cmap, alpha=0.4)
 
         # Draw the contours for each label
         heatmap = np.array(heatmap)
+
+        overlay = overlay.astype(np.int64)
         indexes_to_plot = np.unique(overlay[overlay > 0])
-        for ii in range(len(indexes_to_plot)):
-            im1 = 255 * (overlay == indexes_to_plot[ii]).astype(np.uint8)
+        for index_to_plot in indexes_to_plot:
+            im1 = 255 * (overlay == index_to_plot).astype(np.uint8)
             contours, hierarchy = cv2.findContours(im1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            color_label = np.argwhere(indexes_to_plot[ii] == all_numerical_labels + 1)
 
-            if len(color_label) > 0:
-                col = 255 * cmap.colors[color_label[0][0]]
-            else:
-                col = [0, 0, 0]  # black contour if you can't find a colour.
-
+            col = 255 * cmap.colors[index_to_plot - 1]  # because we said label = numerical_labels + 1
             cv2.drawContours(heatmap, contours, -1, col, 3)
 
         heatmap_PIL = Image.fromarray(heatmap)
@@ -239,6 +227,30 @@ class PreProcessor:
         heatmap_PIL.save(str(img_pth), 'pdf')
 
         print('QA overlay exported at: {}'.format(Path(self.QA_folder, ID + '_patch_' + str(self.patch_size[0]) + '.pdf')))
+
+    def create_background_removal_overlay_QA(self, row, df_export):
+        # Creates overlay of background removal. This will become obsolete if "background" ends up being included
+        # in tissue type classification, but it is useful for now.
+
+        WSI_object           = openslide.open_slide(row['SVS_PATH'])
+        vis_level_view       = len(WSI_object.level_dimensions) - 1  # always the lowest res vis level
+        patch_size = self.patch_size
+        cmap = plt.get_cmap('Set1', lut=1)  # show non-background as red
+
+        # Produce image
+        heatmap, overlay = generate_overlay(WSI_object, np.ones(len(df_export)),
+                                            np.array(df_export[["coords_x", "coords_y"]]),
+                                            vis_level=vis_level_view,
+                                            patch_size=patch_size, cmap=cmap, alpha=0.4)
+
+        heatmap_PIL = Image.fromarray(np.array(heatmap))
+
+        # Export image to QA_path to evaluate the quality of the pre-processing.
+        ID = row['id_external']
+        img_pth = os.path.join(self.QA_folder, ID + '_patch_' + str(patch_size[0]) + '_background_removal' + '.pdf')
+        heatmap_PIL.save(str(img_pth), 'pdf')
+
+        print('QA background removal overlay exported at: {}'.format(img_pth))
 
 
     def organise_contours(self,dataset):
@@ -452,6 +464,7 @@ class PreProcessor:
         df = pd.DataFrame()
         for idx, row in dataset.iterrows():
             cur_dataset = self.inference_processing(row)
-            df = pd.concat([df, cur_dataset])
+            self.create_background_removal_overlay_QA(row, cur_dataset)
+            df = pd.concat([df, cur_dataset], ignore_index=True)
             print('--------------------------------------------------------------------------------')
         return df

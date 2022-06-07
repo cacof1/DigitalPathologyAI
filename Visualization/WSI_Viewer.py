@@ -50,7 +50,7 @@ def block_blending(img, WSI_object, vis_level, top_left, bot_right, alpha=0.5, b
 
 
 def generate_overlay(WSI_object=None, labels=None, coords=None, vis_level=2,
-                 patch_size=[256, 256], cmap=None, alpha=0.4):
+                     patch_size=[256, 256], cmap=None, alpha=0.4):
     # INPUT:
     # WSI_object: an instance of the class openslide, ex: WSI_object = openslide.open_slide(svs_filename).
     # labels: a (Ncoords, ) numpy array providing the label of each coordinate at coords
@@ -99,8 +99,8 @@ def generate_overlay(WSI_object=None, labels=None, coords=None, vis_level=2,
     twenty_percent_mark = max(1, int(len(scaled_coords) * 0.2))
 
     for idx in range(len(scaled_coords)):
-        #if (idx + 1) % twenty_percent_mark == 0:
-            #print('progress: {}/{}'.format(idx, len(coords)))  # uncomment if you want to track image formation
+        # if (idx + 1) % twenty_percent_mark == 0:
+        # print('progress: {}/{}'.format(idx, len(coords)))  # uncomment if you want to track image formation
 
         coord = scaled_coords[idx]
 
