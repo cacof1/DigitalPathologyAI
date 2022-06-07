@@ -18,7 +18,7 @@ def ShowTrainValTestInfo(data, config):
                 print('Your training dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_train, len(data.train_data.coords[target]), npts_train/len(data.train_data.coords[target])*100, label))
                 label_counter[label] += npts_train
 
-            fc = data.train_data.coords.file_id.copy()
+            fc = data.train_data.coords.SVS_PATH.copy()
             print('Distribution of the {} patches from the {} file_ids within the training dataset: '.format(len(fc),len(fc.unique())))
             for f in fc.unique():
                 print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))
@@ -28,7 +28,7 @@ def ShowTrainValTestInfo(data, config):
                 print('Your validation dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_valid, len(data.val_data.coords[target]), npts_valid/len(data.val_data.coords[target])*100, label))
                 label_counter[label] += npts_valid
 
-            fc = data.val_data.coords.file_id.copy()
+            fc = data.val_data.coords.SVS_PATH.copy()
             print('Distribution of the {} patches from the {} file_ids within the validation dataset: '.format(len(fc),len(fc.unique())))
             for f in fc.unique():
                 print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))

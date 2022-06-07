@@ -10,8 +10,11 @@ import transformers  # from hugging face
 # Basic implementation of a convolutional neural network based on common backbones (any in torchvision.models)
 class ConvNet(pl.LightningModule):
 
-    def __init__(self, config):
+    def __init__(self, config, label_encoder=None):
         super().__init__()
+
+        self.save_hyperparameters()  # will save the hyperparameters that come as an input.
+
         self.config = config
 
         self.backbone = getattr(models, config['BASEMODEL']['Backbone'])
@@ -24,8 +27,7 @@ class ConvNet(pl.LightningModule):
         self.loss_fcn = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
 
         if self.config['BASEMODEL']['Loss_Function'] == 'CrossEntropyLoss':  # there is a bug currently. Quick fix...
-            self.loss_fcn = torch.nn.CrossEntropyLoss()#weight=config['INTERNAL']['weights'],
-                                                      #label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
+            self.loss_fcn = torch.nn.CrossEntropyLoss(label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])#weight=config['INTERNAL']['weights'])
 
         self.activation = getattr(torch.nn, self.config["BASEMODEL"]["Activation"])()
         out_feats = list(self.backbone.children())[-1].out_features
@@ -35,6 +37,9 @@ class ConvNet(pl.LightningModule):
             nn.Linear(512, self.config["DATA"]["N_Classes"]),
             self.activation,
         )
+
+        self.LabelEncoder = label_encoder
+
 
     def forward(self, x):
         return self.model(x)
