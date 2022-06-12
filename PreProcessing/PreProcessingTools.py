@@ -136,9 +136,9 @@ def tile_membership_contour(shared, edge):
 
     # Third condition: verify if the remove background condition is turned on, and apply.
     # This is the code's main bottleneck as we need to load each patch, colour-normalise it, and assess its colour.
-    if shared[2]:
-        background_fraction = patch_background_fraction(shared[0:3], edge)
-        if background_fraction > 0.5: return False
+    #if shared[2]:
+    #    background_fraction = patch_background_fraction(shared[0:3], edge)
+    #    if background_fraction > 0.5: return False
             
     return True
 
@@ -386,9 +386,10 @@ class PreProcessor:
                 edges_to_test = lims_to_vec(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax,patch_size=self.patch_size)
 
                 # Remove BG in concerned ROIs
-                remove_BG_cond = [ROI_name.lower() in remove_bg_contour.lower() for remove_bg_contour in self.config['CONTOURS']['Background_Removal']]
-                if any(remove_BG_cond): remove_BG = self.config['CONTOURS']['Background_Thresh']                                       
-                else:remove_BG = None                    
+                #remove_BG_cond = [ROI_name.lower() in remove_bg_contour.lower() for remove_bg_contour in self.config['CONTOURS']['Background_Removal']]
+                #if any(remove_BG_cond): remove_BG = self.config['CONTOURS']['Background_Thresh']                                       
+                #else:remove_BG = None
+                remove_BG = None                    
 
                 # Loop over all tiles and see if they are members of the current ROI. Do in // if you have many tiles, otherwise the overhead cost is not worth it
                 shared = (WSI_object, self.patch_size, remove_BG, contours_idx_within_ROI, df, coords)
@@ -418,11 +419,12 @@ class PreProcessor:
         WSI_object = openslide.open_slide(row['SVS_PATH'])
 
         # 2. Identify non-background patches
-        edges_to_test = lims_to_vec(xmin=0, xmax=WSI_object.level_dimensions[0][0], ymin=0,
-                                    ymax=WSI_object.level_dimensions[0][1],
-                                    patch_size=self.patch_size)
+        edges_to_test = lims_to_vec(xmin=0, xmax=WSI_object.level_dimensions[0][0], ymin=0, ymax=WSI_object.level_dimensions[0][1], patch_size=self.patch_size)
+        print(0, WSI_object.level_dimensions[0][0], 0,WSI_object.level_dimensions[0][1],self.patch_size)
+        print(edges_to_test)
         shared = (WSI_object, self.patch_size, 0.90)  # for // processing
 
+        """
         if platform != "darwin":  # fail-safe - parallel computing not working on M1 macs for now
             with WorkerPool(n_jobs=10, start_method='fork') as pool:
                 pool.set_shared_objects(shared)
@@ -433,12 +435,13 @@ class PreProcessor:
             background_fractions = np.zeros(len(edges_to_test))
             for ii in tqdm(range(len(edges_to_test)), desc="Background estimation of ID #{}...".format(row['id_external'])):
                 background_fractions[ii] = patch_background_fraction(shared, edges_to_test[ii, :])
-
         valid_patches = background_fractions < 0.5
+        """
+
 
         # 3. Create dataframe
-        coord_x = edges_to_test[valid_patches, 0]
-        coord_y = edges_to_test[valid_patches, 1]
+        coord_x = edges_to_test[:, 0]
+        coord_y = edges_to_test[:, 1]
         df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y})
         df_export['SVS_PATH'] = row['SVS_PATH']
         return df_export

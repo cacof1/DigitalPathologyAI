@@ -51,7 +51,7 @@ data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=
                   pin_memory=True)
 
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['BASEMODEL']['Precision'])
-model = ConvNet.load_from_checkpoint(checkpoint_path=config['CHECKPOINT']['Model_Save_Path'])
+model = ConvNet.load_from_checkpoint(checkpoint_path=sys.argv[2])
 
 model.eval()
 predictions = trainer.predict(model, data)
@@ -60,8 +60,7 @@ predicted_classes_prob = torch.Tensor.cpu(torch.cat(predictions))
 tissue_names = model.LabelEncoder.inverse_transform(np.arange(predicted_classes_prob.shape[1]))
 
 for tissue_no, tissue_name in enumerate(tissue_names):
-    coords_file['prob_' + config['DATA']['Label'] + '_' + tissue_name] = pd.Series(predicted_classes_prob[:, tissue_no],
-                                                                        index=coords_file.index)
+    coords_file['prob_' + config['DATA']['Label'] + '_' + tissue_name] = pd.Series(predicted_classes_prob[:, tissue_no],index=coords_file.index)                                                                                   
     coords_file = coords_file.fillna(0)
 
 SaveFileParameter(config, coords_file)

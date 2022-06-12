@@ -124,7 +124,7 @@ print(config['DATA']['loss_weights'])
 """
 
 # Give the user some insight on the data
-GetInfo.ShowTrainValTestInfo(data, config)
+#GetInfo.ShowTrainValTestInfo(data, config)
 
 # Load model and train
 trainer = pl.Trainer(gpus= torch.cuda.device_count(),

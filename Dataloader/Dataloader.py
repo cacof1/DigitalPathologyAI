@@ -4,6 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
 import openslide
 import torch
+from collections import Counter
 #import npyExportTools
 import itertools
 import Utils.sampling_schemes as sampling_schemes
@@ -59,9 +60,9 @@ class DataModule(LightningDataModule):
         super().__init__()
 
         self.batch_size = batch_size
-
+        print(Counter(coords_file[target]))        
         coords_file[target] = label_encoder.transform(coords_file[target])
-        
+
         if sampling_scheme.lower() == 'wsi':
             coords_file_sampled = sampling_schemes.sample_N_per_WSI(coords_file, n_per_sample=n_per_sample)
             svi = np.unique(coords_file_sampled.SVS_PATH)
@@ -81,8 +82,9 @@ class DataModule(LightningDataModule):
                                                            train_size=train_size, test_size=val_size)
 
         self.train_data = DataGenerator(coords_file_train, transform=train_transform, target=target, **kwargs)
-        self.val_data = DataGenerator(coords_file_valid, transform=val_transform, target=target, **kwargs)
+        self.val_data   = DataGenerator(coords_file_valid, transform=val_transform, target=target, **kwargs)
 
+        
     def train_dataloader(self):
         return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
 
