@@ -1,13 +1,14 @@
 name: DigitalPathologyAI
 channels:
+  - pytorch
   - ome
-  - huggingface
+  - anaconda
   - conda-forge
   - defaults
 dependencies:
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=2_kmp_llvm
-  - absl-py=1.0.0=pyhd8ed1ab_0
+  - absl-py=1.1.0=pyhd8ed1ab_0
   - aiohttp=3.8.1=py39hb9d737c_1
   - aiosignal=1.2.0=pyhd8ed1ab_0
   - alsa-lib=1.2.6.1=h7f98852_0
@@ -15,6 +16,8 @@ dependencies:
   - appdirs=1.4.4=pyh9f0ad1d_0
   - async-timeout=4.0.2=pyhd8ed1ab_0
   - attrs=21.4.0=pyhd8ed1ab_0
+  - blas=2.115=mkl
+  - blas-devel=3.9.0=15_linux64_mkl
   - blinker=1.4=py_1
   - brotlipy=0.7.0=py39hb9d737c_1004
   - bzip2=1.0.8=h7f98852_4
@@ -28,6 +31,7 @@ dependencies:
   - click=8.1.3=py39hf3d152e_0
   - colorama=0.4.4=pyh9f0ad1d_0
   - cryptography=37.0.2=py39hd97740a_0
+  - cudatoolkit=11.3.1=h2bc3f7f_2
   - dataclasses=0.8=pyhc8e2a94_3
   - dbus=1.13.6=h5008d03_3
   - expat=2.4.8=h27087fc_0
@@ -60,11 +64,12 @@ dependencies:
   - gstreamer=1.20.2=hd4edc92_1
   - harfbuzz=4.2.0=h40b6f09_0
   - hdf5=1.12.1=nompi_h2386368_104
-  - huggingface_hub=0.7.0=py_0
+  - huggingface_hub=0.7.0=pyhd8ed1ab_0
   - icu=69.1=h9c3ff4c_0
   - idna=3.3=pyhd8ed1ab_0
   - importlib-metadata=4.11.4=py39hf3d152e_0
   - importlib_metadata=4.11.4=hd8ed1ab_0
+  - itk=5.2.0=py39hef51801_0
   - jasper=2.0.33=ha77e612_0
   - joblib=1.1.0=pyhd8ed1ab_0
   - jpeg=9e=h166bdaf_1
@@ -74,12 +79,12 @@ dependencies:
   - lcms2=2.12=hddcbb42_0
   - ld_impl_linux-64=2.36.1=hea4e1c9_2
   - lerc=3.0=h9c3ff4c_0
-  - libblas=3.9.0=14_linux64_mkl
-  - libcblas=3.9.0=14_linux64_mkl
+  - libblas=3.9.0=15_linux64_mkl
+  - libcblas=3.9.0=15_linux64_mkl
   - libclang=13.0.1=default_hc23dcda_0
   - libcurl=7.83.1=h7bff187_0
   - libdeflate=1.10=h7f98852_0
-  - libdrm=2.4.109=h7f98852_0
+  - libdrm=2.4.111=h166bdaf_0
   - libedit=3.1.20191231=he28a2e2_2
   - libev=4.33=h516909a_1
   - libevent=2.1.10=h9b69904_4
@@ -90,8 +95,8 @@ dependencies:
   - libglib=2.70.2=h174f98d_4
   - libglu=9.0.0=he1b5a44_1001
   - libiconv=1.16=h516909a_0
-  - liblapack=3.9.0=14_linux64_mkl
-  - liblapacke=3.9.0=14_linux64_mkl
+  - liblapack=3.9.0=15_linux64_mkl
+  - liblapacke=3.9.0=15_linux64_mkl
   - libllvm13=13.0.1=hf817b99_2
   - libnghttp2=1.47.0=h727a467_0
   - libnsl=2.0.0=h7f98852_0
@@ -106,6 +111,7 @@ dependencies:
   - libstdcxx-ng=12.1.0=ha89aaad_16
   - libtiff=4.4.0=h0fcbabc_0
   - libuuid=2.32.1=h7f98852_1000
+  - libuv=1.43.0=h7f98852_0
   - libva=2.14.0=h7f98852_0
   - libvorbis=1.3.7=h9c3ff4c_0
   - libvpx=1.11.0=h9c3ff4c_3
@@ -119,6 +125,9 @@ dependencies:
   - lz4-c=1.9.3=h9c3ff4c_1
   - markdown=3.3.7=pyhd8ed1ab_0
   - mkl=2022.1.0=h84fe81f_915
+  - mkl-devel=2022.1.0=ha770c72_916
+  - mkl-include=2022.1.0=h84fe81f_915
+  - monai=0.8.1=pyhd8ed1ab_0
   - mpire=2.4.0=py39hf3d152e_0
   - multidict=6.0.2=py39hb9d737c_1
   - mysql-common=8.0.29=haf5c9bc_1
@@ -155,17 +164,18 @@ dependencies:
   - pysocks=1.7.1=py39hf3d152e_5
   - python=3.9.13=h9a8a25e_0_cpython
   - python_abi=3.9=2_cp39
-  - pytorch=1.11.0=cpu_py39h5d22d69_1
+  - pytorch=1.11.0=py3.9_cuda11.3_cudnn8.2.0_0
   - pytorch-lightning=1.6.3=pyhd8ed1ab_0
+  - pytorch-mutex=1.0=cuda
   - pyu2f=0.1.5=pyhd8ed1ab_0
   - pyyaml=6.0=py39hb9d737c_4
   - qt=5.12.9=h1304e3e_6
   - readline=8.1=h46c0cb4_0
-  - regex=2022.4.24=py39hb9d737c_0
+  - regex=2022.6.2=py39hb9d737c_0
   - requests=2.27.1=pyhd8ed1ab_0
   - requests-oauthlib=1.3.1=pyhd8ed1ab_0
   - rsa=4.8=pyhd8ed1ab_0
-  - sacremoses=master=py_0
+  - sacremoses=0.0.53=pyhd8ed1ab_0
   - setuptools=59.5.0=py39hf3d152e_0
   - six=1.16.0=pyh6c4a22f_0
   - sleef=3.5.1=h9b69904_2
@@ -176,10 +186,11 @@ dependencies:
   - tensorboard-data-server=0.6.0=py39hd97740a_2
   - tensorboard-plugin-wit=1.8.1=pyhd8ed1ab_0
   - tk=8.6.12=h27826a3_0
-  - tokenizers=0.12.1=py39_0
+  - tokenizers=0.12.1=py39h3045328_1
   - toml=0.10.2=pyhd8ed1ab_0
+  - torchaudio=0.11.0=py39_cu113
   - torchmetrics=0.9.0=pyhd8ed1ab_0
-  - torchvision=0.12.0=cpu_py39h881bd40_1
+  - torchvision=0.12.0=py39_cu113
   - tqdm=4.64.0=pyhd8ed1ab_0
   - transformers=4.19.2=pyhd8ed1ab_0
   - typing-extensions=4.2.0=hd8ed1ab_1
@@ -212,4 +223,10 @@ dependencies:
   - zipp=3.8.0=pyhd8ed1ab_0
   - zlib=1.2.12=h166bdaf_0
   - zstd=1.5.2=h8a70e8d_1
+  - pip:
+    - itk-core==5.2.0
+    - itk-filtering==5.2.0
+    - itk-numerics==5.2.0
+    - itk-registration==5.2.0
+    - itk-segmentation==5.2.0
 prefix: /home/rmapcco/.conda/envs/DigitalPathologyAI
