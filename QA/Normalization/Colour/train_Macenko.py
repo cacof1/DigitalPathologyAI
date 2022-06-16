@@ -7,15 +7,16 @@ import ColourNorm
 import staintools
 
 id_test = '499877'
+id_test = '493199'
 id_train = '484813'
-bp = '/home/mikael/Documents/SVS_pretraining_test/'
+bp = '/Users/mikael/Documents/testing/'
 
 # --------------------------------------------------------------------------------------------------------------------
 # hyperparameters of Macenko normalisation
 alpha = 1
 beta = 0.1
 Io = 250
-export = True
+export = False
 
 # for viewing
 vis = 0
@@ -69,9 +70,25 @@ size3 = (2048, 2048)
 start4 = (20224+256,47360)
 size4 = (256, 256)
 
+# other tumour example
+start5 = (24000, 46200)
+size5 = (512, 512)
+
+# Some additional interesting examples
+# start1 = (21000, 18500)
+# start2 = (27000, 23000)
+# start3 = (11150, 15120)
+# start4 = (13500, 34500)
+# start5 = (45789, 13600)
+# size1 = (512, 512)
+# size2 = (512, 512)
+# size3 = (512, 512)
+# size4 = (512, 512)
+# size5 = (512, 512)
+
 # Loop over each region
-starts = [start1, start2, start3, start4]
-sizes = [size1, size2, size3, size4]
+starts = [start1, start2, start3, start4, start5]
+sizes = [size1, size2, size3, size4, size5]
 
 for start, size in zip(starts, sizes):
 
