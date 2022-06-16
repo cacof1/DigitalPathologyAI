@@ -50,7 +50,7 @@ data = DataLoader(DataGenerator(coords_file, transform=val_transform, inference=
                   pin_memory=True)
 
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, precision=config['BASEMODEL']['Precision'])
-model = ConvNet.load_from_checkpoint(checkpoint_path=config['CHECKPOINT']['Model_Save_Path'])
+model = ConvNet.load_from_checkpoint(checkpoint_path=sys.argv[2])
 
 model.eval()
 predictions = trainer.predict(model, data)
