@@ -363,10 +363,9 @@ class PreProcessor:
 
                 # Remove BG in concerned ROIs
                 #remove_BG_cond = [ROI_name.lower() in remove_bg_contour.lower() for remove_bg_contour in self.config['CONTOURS']['Background_Removal']]
-                #if any(remove_BG_cond): remove_BG = self.config['CONTOURS']['Background_Thresh']                                       
+                #if any(remove_BG_cond): remove_BG = self.config['CONTOURS']['Background_Thresh']
                 #else:remove_BG = None
-                remove_BG = None                    
-
+                remove_BG = None
                 # Loop over all tiles and see if they are members of the current ROI. Do in // if you have many tiles, otherwise the overhead cost is not worth it
                 shared = (WSI_object, self.patch_size, remove_BG, contours_idx_within_ROI, df, coords)
                 
@@ -387,39 +386,6 @@ class PreProcessor:
         df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y, 'tissue_type': label})
         df_export['SVS_PATH'] = row['SVS_PATH']
 
-        return df_export
-
-    def inference_processing(self, row):
-
-        # 1. Load WSI
-        WSI_object = openslide.open_slide(row['SVS_PATH'])
-
-        # 2. Identify non-background patches
-        edges_to_test = lims_to_vec(xmin=0, xmax=WSI_object.level_dimensions[0][0], ymin=0, ymax=WSI_object.level_dimensions[0][1], patch_size=self.patch_size)
-        print(0, WSI_object.level_dimensions[0][0], 0,WSI_object.level_dimensions[0][1],self.patch_size)
-        print(edges_to_test)
-        shared = (WSI_object, self.patch_size, 0.90)  # for // processing
-
-        """
-        if platform != "darwin":  # fail-safe - parallel computing not working on M1 macs for now
-            with WorkerPool(n_jobs=10, start_method='fork') as pool:
-                pool.set_shared_objects(shared)
-                background_fractions = pool.map(patch_background_fraction, list(edges_to_test), progress_bar=True)
-            background_fractions = np.asarray(background_fractions)
-
-        else:
-            background_fractions = np.zeros(len(edges_to_test))
-            for ii in tqdm(range(len(edges_to_test)), desc="Background estimation of ID #{}...".format(row['id_external'])):
-                background_fractions[ii] = patch_background_fraction(shared, edges_to_test[ii, :])
-        valid_patches = background_fractions < 0.5
-        """
-
-
-        # 3. Create dataframe
-        coord_x = edges_to_test[:, 0]
-        coord_y = edges_to_test[:, 1]
-        df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y})
-        df_export['SVS_PATH'] = row['SVS_PATH']
         return df_export
     
     # ----------------------------------------------------------------------------------------------------------------

@@ -11,6 +11,7 @@ from Model.ConvNet import ConvNet
 from sklearn import preprocessing
 
 config = toml.load(sys.argv[1])
+#config = toml.load('../Configs/sarcoma/trainer_sarcoma_convnet.ini')
 
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
@@ -23,19 +24,7 @@ print(dataset)
 # 2. Pre-processing: load existing npy files, append target label to coords_file, select tumour tiles only.
 
 # Load pre-processed dataset. It should have been pre-processed with Inference/Preprocess.py first.
-
-# current issue: at the moment, LoadFileParameter will open existing preprocessings whose BASEMODEL fits with the
-# current one. If the preprocessing model was trained with a different architecture as the proposed one for the
-# sarcoma classifier, this code will not work as the BASEMODEL will differ. The usage of LoadFileParameter in
-# that context should be updated. For now, we use a dummy config['BASEMODEL'] with the correct preprocessing parameters.
-# todo: fix the above.
-
-config_inference = {'BASEMODEL': {'Activation': 'Identity', 'Backbone': 'resnet34', 'Model': 'convnet',
-                                  'Loss_Function': 'CrossEntropyLoss', 'Batch_Size': 4,
-                                  'Patch_Size': config['BASEMODEL']['Patch_Size'],
-                                  'Precision': config['BASEMODEL']['Precision'], 'Vis': config['BASEMODEL']['Vis']}}
-
-coords_file = LoadFileParameter(config_inference, dataset)
+coords_file = LoadFileParameter(config, dataset)
 
 # Mask the coords_file to only keep the tumour tiles, depending on a pre-set criteria.
 coords_file = coords_file[coords_file['prob_tissue_type_tumour'] > 0.94]
@@ -51,7 +40,6 @@ config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
 
 ########################################################################################################################
 # 3. Model training
-
 
 # Set up logging, model checkpoint
 name = GetInfo.format_model_name(config)
