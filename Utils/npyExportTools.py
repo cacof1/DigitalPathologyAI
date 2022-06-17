@@ -14,13 +14,14 @@ def remove_dict_keys(d, blacklist):
 
 
 def basemodel_to_str(config):
-    """Converts config['BASEMODEL'] dict to a string."""
+    """Converts config['BASEMODEL'] dict to a string, using valid_keys only."""
 
     bs = ''
     d = config['BASEMODEL']
+    valid_keys = ['Patch_Size', 'Vis']
 
-    for k in sorted(d.keys()):
-        bs += k + '_' + str(d[k]) + ('_' if k != sorted(d.keys())[-1] else '')
+    for nk, k in enumerate(valid_keys):
+        bs += k + '_' + str(d[k]) + ('_' if k != valid_keys[-1] else '')
 
     return bs
 

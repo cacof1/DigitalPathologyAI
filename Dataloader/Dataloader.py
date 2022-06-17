@@ -60,7 +60,6 @@ class DataModule(LightningDataModule):
         super().__init__()
 
         self.batch_size = batch_size
-        print(Counter(coords_file[target]))        
         coords_file[target] = label_encoder.transform(coords_file[target])
 
         if sampling_scheme.lower() == 'wsi':
