@@ -27,6 +27,19 @@ import toml
 
 
 config   = toml.load(sys.argv[1])
+##############################################
+##Load File
+
+dataset = QueryFromServer(config)
+Synchronize(config, dataset)
+
+config_inference = {'BASEMODEL': {'Activation': 'Identity', 'Backbone': 'resnet34', 'Model': 'convnet',
+                                  'Loss_Function': 'CrossEntropyLoss', 'Batch_Size': 4,
+                                  'Patch_Size': config['BASEMODEL']['Patch_Size'],
+                                  'Precision': config['BASEMODEL']['Precision'], 'Vis': config['BASEMODEL']['Vis']}}
+
+coords_file = LoadFileParameter(config_inference, dataset)
+
 name     = config['MODEL']['BaseModel'] +"_"+ config['MODEL']['Backbone']+ "_wf" + str(config['MODEL']['wf']) + "_depth" + str(config['MODEL']['depth'])
 logger   = TensorBoardLogger('lightning_logs',name = name)
 checkpoint_callback = ModelCheckpoint(
@@ -54,16 +67,13 @@ MasterSheet    = config['DATA']['Mastersheet']
 SVS_Folder     = config['DATA']['SVS_Folder']
 Patches_Folder = config['DATA']['Patches_Folder']
 
-ids           = WSIQuery(config)
-coords_file   = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
-#coords_file   = coords_file[coords_file["tumour_label"] == 1]
 
 
 seed_everything(config['MODEL']['RANDOM_SEED'])
 trainer   = Trainer(gpus=1, max_epochs=config['MODEL']['Max_Epochs'],precision=config['MODEL']['Precision'], callbacks = callbacks,logger=logger)
 model     = AutoEncoder(config = config)
 
-summary(model.to('cuda'), (32, 3, 128, 128),col_names = ["input_size","output_size"],depth=5)
+#summary(model.to('cuda'), (32, 3, 128, 128),col_names = ["input_size","output_size"],depth=5)
 
 data      = DataModule(
     coords_file,

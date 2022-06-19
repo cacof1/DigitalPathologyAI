@@ -8,11 +8,6 @@ from deepdiff import DeepDiff
 import os
 # import xlsxwriter
 
-def remove_dict_keys(d, blacklist):
-    return {k: d[k] for k in d if k not in blacklist}
-
-
-
 def basemodel_to_str(config):
     """Converts config['BASEMODEL'] dict to a string, using valid_keys only."""
 
@@ -24,7 +19,6 @@ def basemodel_to_str(config):
         bs += k + '_' + str(d[k]) + ('_' if k != valid_keys[-1] else '')
 
     return bs
-
 
 def adjust_df_to_excel_columns(writer, df, sheet):
     # TODO: work in progress. Does not work well with xlsxwriter yet.

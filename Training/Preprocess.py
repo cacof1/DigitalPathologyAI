@@ -11,33 +11,25 @@ from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 
 config = toml.load(sys.argv[1])
-#config = toml.load('../Configs/preprocessing/trainer_tumour_convnet.ini')
-
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
 dataset = QueryFromServer(config)
 Synchronize(config, dataset)
-
-
+print(dataset)
 ########################################################################################################################
 # 2. Pre-processing: create npy files
 
 # option #1: preprocessor + save to npy
 preprocessor = PreProcessor(config)
-coords_file = preprocessor.getTilesFromAnnotations(dataset)
-SaveFileParameter(config, coords_file)
-print(coords_file)
+coords_file  = preprocessor.getTilesFromAnnotations(dataset)
 
-
-# option #2: load an existing preprocessing dataset
+# option #2: load/save an existing preprocessing dataset
+# SaveFileParameter(config, coords_file)
 # coords_file = LoadFileParameter(config, dataset)
-
 config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
-
 ########################################################################################################################
-# 3. Model training
-
+# 3. Model 
 # Set up logging, model checkpoint
 name = GetInfo.format_model_name(config)
 if 'logger_folder' in config['CHECKPOINT']:
@@ -88,10 +80,20 @@ val_transform = transforms.Compose([
     transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+trainer = pl.Trainer(gpus= torch.cuda.device_count(),
+                     benchmark=True,
+                     max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
+                     precision=config['BASEMODEL']['Precision'],
+                     callbacks=[checkpoint_callback, lr_monitor],
+                     logger=logger)
 
 le = preprocessing.LabelEncoder()
 le.fit(coords_file[config['DATA']['Label']])
+model = ConvNet(config, label_encoder=le)
 
+########################################################################################################################
+# 3. Dataloader
+coords_file['SVS_PATH'] = coords_file.apply(lambda row:dataset.loc[dataset['id_internal']==row['SVS_ID']]['SVS_PATH'],axis=1) #Stitch SVS Path local to coords_file
 data = DataModule(
     coords_file,
     batch_size=config['BASEMODEL']['Batch_Size'],
@@ -107,10 +109,13 @@ data = DataModule(
     sampling_scheme=config['DATA']['Sampling_Scheme'],
     label_encoder=le
 )
+
+# Give the user some insight on the data
+GetInfo.ShowTrainValTestInfo(data, config)
+"""
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 config['DATA']['loss_weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 
-"""
 The following will be used in an upcoming release to add weights to labels.
 N = sum(npatches_per_class)
 beta = (N-1)/N
@@ -122,17 +127,5 @@ print(config['DATA']['loss_weights'])
 * note: all the above could be moved directly into the ConvNet model or packaged in a function within Utils/
 * reference: Class-balanced Loss Based on Effective Number of Samples, Cui et al CVPR 2019.
 """
-
-# Give the user some insight on the data
-GetInfo.ShowTrainValTestInfo(data, config)
-
 # Load model and train
-trainer = pl.Trainer(gpus= torch.cuda.device_count(),
-                     benchmark=True,
-                     max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
-                     precision=config['BASEMODEL']['Precision'],
-                     callbacks=[checkpoint_callback, lr_monitor],
-                     logger=logger)
-
-model = ConvNet(config, label_encoder=le)
 trainer.fit(model, data)

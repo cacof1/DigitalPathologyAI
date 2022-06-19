@@ -29,18 +29,12 @@ coords_file = LoadFileParameter(config, dataset)
 # Mask the coords_file to only keep the tumour tiles, depending on a pre-set criteria.
 coords_file = coords_file[coords_file['prob_tissue_type_tumour'] > 0.94]
 
-# Append the target label to coords_file. If "diagnosis", make sure you also add the tumour grade at the end.
-coords_file[config['DATA']['Label']] = ''
-for index, row in dataset.iterrows():
-    label = row[config['DATA']['Label']] + row['tumour_grade'] if config['DATA']['Label'] == 'diagnosis' else ''
-    mask = coords_file.SVS_PATH == row.SVS_PATH
-    coords_file[config['DATA']['Label']][coords_file.SVS_PATH == row.SVS_PATH] = [label] * len(np.where(mask)[0])
+# Append the target label to coords_file. 
+coords_file[config['DATA']['Label']] = coords_file.apply(lambda row:dataset.loc[dataset['id_internal']==row['SVS_ID']][config['DATA']['Label']],axis=1)
 
 config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
-
 ########################################################################################################################
-# 3. Model training
-
+#3 Model
 # Set up logging, model checkpoint
 name = GetInfo.format_model_name(config)
 if 'logger_folder' in config['CHECKPOINT']:
@@ -96,6 +90,19 @@ val_transform = transforms.Compose([
 le = preprocessing.LabelEncoder()
 le.fit(coords_file[config['DATA']['Label']])
 
+# Load model and train
+trainer = pl.Trainer(gpus=torch.cuda.device_count(),
+                     benchmark=True,
+                     max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
+                     precision=config['BASEMODEL']['Precision'],
+                     callbacks=[checkpoint_callback, lr_monitor],
+                     logger=logger)
+
+model = ConvNet(config, label_encoder=le)
+
+########################################################################################################################
+#4 Dataloader
+
 data = DataModule(
     coords_file,
     batch_size=config['BASEMODEL']['Batch_Size'],
@@ -111,20 +118,11 @@ data = DataModule(
     sampling_scheme=config['DATA']['Sampling_Scheme'],
     label_encoder=le
 )
+GetInfo.ShowTrainValTestInfo(data, config)
 
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 config['DATA']['loss_weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 
 # Give the user some insight on the data
-GetInfo.ShowTrainValTestInfo(data, config)
 
-# Load model and train
-trainer = pl.Trainer(gpus=torch.cuda.device_count(),
-                     benchmark=True,
-                     max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
-                     precision=config['BASEMODEL']['Precision'],
-                     callbacks=[checkpoint_callback, lr_monitor],
-                     logger=logger)
-
-model = ConvNet(config, label_encoder=le)
 trainer.fit(model, data)

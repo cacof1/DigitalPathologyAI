@@ -59,6 +59,7 @@ class DataModule(LightningDataModule):
                  train_size=0.7, val_size=0.3, target=None, sampling_scheme='wsi', label_encoder=None, **kwargs):
         super().__init__()
 
+        
         self.batch_size = batch_size
         coords_file[target] = label_encoder.transform(coords_file[target])
 
@@ -82,7 +83,6 @@ class DataModule(LightningDataModule):
 
         self.train_data = DataGenerator(coords_file_train, transform=train_transform, target=target, **kwargs)
         self.val_data   = DataGenerator(coords_file_valid, transform=val_transform, target=target, **kwargs)
-
         
     def train_dataloader(self):
         return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=10, pin_memory=True, shuffle=True)
@@ -102,22 +102,19 @@ def LoadFileParameter(config, dataset):
 
     return coords_file
 
-
-
-def SaveFileParameter(config, df):
+def SaveFileParameter(config, df, SVS_ID):
 
     cur_basemodel_str = npyExportTools.basemodel_to_str(config)
-    for svs_path, df_split in df.groupby(df.SVS_PATH):
-        npy_path = os.path.join(os.path.split(svs_path)[0], 'patches', os.path.split(svs_path)[1].replace('svs', 'npy'))
-        os.makedirs(os.path.split(npy_path)[0], exist_ok=True)  # in case folder is non-existent
-        npy_dict = np.load(npy_path, allow_pickle=True).item() if os.path.exists(npy_path) else {}
-        npy_dict[cur_basemodel_str] = [config, df_split.copy()]
-        np.save(npy_path, npy_dict)
-
+    npy_path = os.path.join(config['DATA']['SVS_Folder'], 'patches', SVS_ID+".npy")
+    os.makedirs(os.path.split(npy_path)[0], exist_ok=True)  # in case folder is non-existent
+    npy_dict = np.load(npy_path, allow_pickle=True).item() if os.path.exists(npy_path) else {}
+    npy_dict[cur_basemodel_str] = [config, df]
+    np.save(npy_path, npy_dict)
+    return npy_path
 
 def QueryFromServer(config, **kwargs):
     print("Querying from Server")
-    df = pd.DataFrame()
+    df   = pd.DataFrame()
     conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])  ## Group not implemented yet
     keys = list(config['CRITERIA'].keys())
     value_iter = itertools.product(*config['CRITERIA'].values())  ## Create a joint list with all elements
@@ -158,26 +155,26 @@ def QueryFromServer(config, **kwargs):
                                 columns=["id_omero", "id_external", "Size", *row[3].val.getMapValueAsMap().keys()])
             df_criteria = pd.concat([df_criteria, temp])                                    
 
+
         df_criteria['SVS_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], image_id+'.svs') for image_id in df_criteria['id_external']]
-        
         df = pd.concat([df, df_criteria])
         
     conn.close()
     return df
 
 def Synchronize(config, df):
-
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
     for index, image in df.iterrows():
-        filepath = Path(config['DATA']['SVS_Folder'], image['id_external']+'.svs')  # Remove " [0]" at end of file
-
+        filepath = Path(config['DATA']['SVS_Folder'], image['id_external']+'.svs')  
         if filepath.is_file():  # Exist
             if not filepath.stat().st_size == image['Size']:  # Corrupted
                 print("File size doesn't match, redownloading")
                 os.remove(filepath)
                 download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
-
+                download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
         else:  ## Doesn't exist
             print("Doesn't exist")
             download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
-
+            download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
+    conn.close()
             
