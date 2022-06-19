@@ -24,7 +24,6 @@ coords_file  = preprocessor.getAllTiles(dataset)
 # option #2: load/save existing
 #SaveFileParameter(config, coords_file)
 # coords_file = LoadFileParameter(config, dataset)
-
 ########################################################################################################################
 # 3. Model
 pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
@@ -64,9 +63,9 @@ for tissue_no, tissue_name in enumerate(tissue_names):
 ########################################################################################################################
 ## Send back to OMERO
 conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
-for SVS_ID, df_split in coords_file.groupby(df.SVS_ID):
-    npy_file = SaveFileParameter(config, df, SVS_ID)
-
+for SVS_ID, df_split in coords_file.groupby(coords_file.SVS_ID):
+    image = conn.getObject("Image", dataset.loc[dataset["id_internal"]==SVS_ID].iloc[0]['id_omero'])
+    npy_file = SaveFileParameter(config, df_split, SVS_ID)
     print("\nCreating an OriginalFile and FileAnnotation")
     file_ann = conn.createFileAnnfromLocalFile(npy_file, mimetype="text/plain", desc=None)
     print("Attaching FileAnnotation to Dataset: ", "File ID:", file_ann.getId(), ",", file_ann.getFile().getName(), "Size:", file_ann.getFile().getSize())
