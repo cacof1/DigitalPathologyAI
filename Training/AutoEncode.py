@@ -29,10 +29,10 @@ config   = toml.load(sys.argv[1])
 ##############################################
 ##Load File
 
-dataset = QueryFromServer(config)
-SynchronizeSVS(config, dataset)
+SVS_dataset = QueryFromServer(config)
+SynchronizeSVS(config, SVS_dataset)
 
-coords_file = LoadFileParameter(config, dataset)
+tile_dataset = LoadFileParameter(config, SVS_dataset)
 
 name   = GetInfo.format_model_name(config)
 logger = TensorBoardLogger('lightning_logs',name = name)
@@ -70,7 +70,7 @@ model     = AutoEncoder(config = config)
 #summary(model.to('cuda'), (32, 3, 128, 128),col_names = ["input_size","output_size"],depth=5)
 
 data      = DataModule(
-    coords_file,
+    tile_dataset,
     batch_size       = config['MODEL']['Batch_Size'],
     train_transform  = train_transform,
     val_transform    = val_transform,

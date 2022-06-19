@@ -49,8 +49,8 @@ SVS_Folder     = sys.argv[2]
 Patches_Folder = sys.argv[3]
 
 ids           = WSIQuery(MasterSheet)
-coords_file   = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
-#coords_file   = coords_file[coords_file["tumour_label"] == 1]
+tile_dataset   = LoadFileParameter(ids, SVS_Folder, Patches_Folder)
+#tile_dataset   = tile_dataset[tile_dataset["tumour_label"] == 1]
 seed_everything(42)                                                                                                                                                                                           
 
 trainer   = Trainer(gpus=1, max_epochs=5,precision=32, callbacks = callbacks,logger=logger)
@@ -67,6 +67,6 @@ model_dict  = nn.ModuleDict({
     keys[1]: ImageClassifier().backbone    
 })
 model     = MixModel(model_dict)
-data      = DataModule(coords_file, batch_size=32, train_transform = train_transform, val_transform = val_transform, inference=False, dim_list=dim_list, vis_list = vis_list)
+data      = DataModule(tile_dataset, batch_size=32, train_transform = train_transform, val_transform = val_transform, inference=False, dim_list=dim_list, vis_list = vis_list)
 trainer.fit(model, data)
 

@@ -14,24 +14,24 @@ config = toml.load(sys.argv[1])
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
-dataset = QueryFromServer(config)
-SynchronizeSVS(config, dataset)
-SynchronizeAnnotation(config, dataset)
-print(dataset)
+SVS_dataset = QueryFromServer(config)
+SynchronizeSVS(config, SVS_dataset)
+SynchronizeAnnotation(config, SVS_dataset)
+print(SVS_dataset)
 
 ########################################################################################################################
-# 2. Pre-processing: load existing npy files, append target label to coords_file, select tumour tiles only.
+# 2. Pre-processing: load existing npy files, append target label to tile_dataset, select tumour tiles only.
 
 # Load pre-processed dataset. It should have been pre-processed with Inference/Preprocess.py first.
-coords_file = LoadFileParameter(config, dataset)
+tile_dataset = LoadFileParameter(config, SVS_dataset)
 
-# Mask the coords_file to only keep the tumour tiles, depending on a pre-set criteria.
-coords_file = coords_file[coords_file['prob_tissue_type_tumour'] > 0.94]
+# Mask the tile_dataset to only keep the tumour tiles, depending on a pre-set criteria.
+tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_tumour'] > 0.94]
 
-# Append the target label to coords_file. 
-coords_file[config['DATA']['Label']] = coords_file.apply(lambda row:dataset.loc[dataset['id_internal']==row['SVS_ID']][config['DATA']['Label']],axis=1)
+# Append the target label to tile_dataset. 
+tile_dataset[config['DATA']['Label']] = tile_dataset.apply(lambda row: SVS_dataset.loc[SVS_dataset['id_internal']==row['SVS_ID']][config['DATA']['Label']],axis=1)
 
-config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
+config['DATA']['N_Classes'] = len(tile_dataset[config['DATA']['Label']].unique())
 ########################################################################################################################
 #3 Model
 # Set up logging, model checkpoint
@@ -87,7 +87,7 @@ val_transform = transforms.Compose([
 
 # Create LabelEncoder
 le = preprocessing.LabelEncoder()
-le.fit(coords_file[config['DATA']['Label']])
+le.fit(tile_dataset[config['DATA']['Label']])
 
 # Load model and train
 trainer = pl.Trainer(gpus=torch.cuda.device_count(),
@@ -103,7 +103,7 @@ model = ConvNet(config, label_encoder=le)
 #4 Dataloader
 
 data = DataModule(
-    coords_file,
+    tile_dataset,
     batch_size=config['BASEMODEL']['Batch_Size'],
     train_transform=train_transform,
     val_transform=val_transform,

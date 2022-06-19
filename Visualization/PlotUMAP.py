@@ -13,16 +13,16 @@ ModelPath    = sys.argv[2]
 WSIPath      = "Box01/"
 
 wsi_file = {}
-coords_file = pd.DataFrame()
+tile_dataset = pd.DataFrame()
 for filenb,filename in enumerate(glob.glob(CoordsFolder+"*.h5")):
     coords          = #np.array()
     patient_id      = filename.split("/")[-1][:-3]
     wsi_file_object      = self.wsi = openslide.open_slide(WSIPath + '{}.svs'.format(patient_id))
-    coords_file_temp              = pd.DataFrame(coords,columns=['coords_x','coords_y'])
-    coords_file_temp['patient_id'] = patient_id
+    tile_dataset_temp              = pd.DataFrame(coords,columns=['coords_x','coords_y'])
+    tile_dataset_temp['patient_id'] = patient_id
     wsi_file[patient_id] = wsi_file_object
-    if(filenb==0): coords_file = coords_file_temp
-    else: coords_file = coords_file.append(coords_file_temp)
+    if(filenb==0): tile_dataset = tile_dataset_temp
+    else: tile_dataset = tile_dataset.append(tile_dataset_temp)
 
 val_transform   = transforms.Compose([
     #transforms.ToTensor(),
@@ -35,7 +35,7 @@ invTrans   = transforms.Compose([
 seed_everything(42)
 model              = AutoEncoder.load_from_checkpoint(ModelPath)
 
-test_dataset       = DataGenerator(coords_file, wsi_file, transform=val_transform)
+test_dataset       = DataGenerator(tile_dataset, wsi_file, transform=val_transform)
 num_of_predictions = 10
 for n in range(num_of_predictions):
     image     = test_dataset[n][np.newaxis]

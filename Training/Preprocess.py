@@ -14,20 +14,20 @@ config = toml.load(sys.argv[1])
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
-dataset = QueryFromServer(config)
-SynchronizeSVS(config, dataset)
-print(dataset)
+SVS_dataset = QueryFromServer(config)
+SynchronizeSVS(config, SVS_dataset)
+print(SVS_dataset)
 ########################################################################################################################
 # 2. Pre-processing: create npy files
 
 # option #1: preprocessor + save to npy
 preprocessor = PreProcessor(config)
-coords_file  = preprocessor.getTilesFromAnnotations(dataset)
+tile_dataset  = preprocessor.getTilesFromAnnotations(SVS_dataset)
 
 # option #2: load/save an existing preprocessing dataset
-# SaveFileParameter(config, coords_file)
-# coords_file = LoadFileParameter(config, dataset)
-config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
+# SaveFileParameter(config, tile_dataset)
+# tile_dataset = LoadFileParameter(config, SVS_dataset)
+config['DATA']['N_Classes'] = len(tile_dataset[config['DATA']['Label']].unique())
 ########################################################################################################################
 # 3. Model 
 # Set up logging, model checkpoint
@@ -88,14 +88,14 @@ trainer = pl.Trainer(gpus= torch.cuda.device_count(),
                      logger=logger)
 
 le = preprocessing.LabelEncoder()
-le.fit(coords_file[config['DATA']['Label']])
+le.fit(tile_dataset[config['DATA']['Label']])
 model = ConvNet(config, label_encoder=le)
 
 ########################################################################################################################
 # 3. Dataloader
-coords_file['SVS_PATH'] = coords_file.apply(lambda row:dataset.loc[dataset['id_internal']==row['SVS_ID']]['SVS_PATH'],axis=1) #Stitch SVS Path local to coords_file
+tile_dataset['SVS_PATH'] = tile_dataset.apply(lambda row:SVS_dataset.loc[SVS_dataset['id_internal']==row['SVS_ID']]['SVS_PATH'],axis=1) #Stitch SVS Path local to tile_dataset
 data = DataModule(
-    coords_file,
+    tile_dataset,
     batch_size=config['BASEMODEL']['Batch_Size'],
     train_transform=train_transform,
     val_transform=val_transform,
