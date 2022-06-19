@@ -94,9 +94,7 @@ def LoadFileParameter(config, dataset):
 
     cur_basemodel_str = npyExportTools.basemodel_to_str(config)
     coords_file = pd.DataFrame()
-
-    for svs_path in dataset.SVS_PATH:
-        npy_path    = os.path.join(os.path.split(svs_path)[0], 'patches', os.path.split(svs_path)[1].replace('svs', 'npy'))
+    for npy_path in dataset.NPY_PATH:
         existing_df = np.load(npy_path, allow_pickle=True).item()[cur_basemodel_str][1]
         coords_file = pd.concat([coords_file, existing_df], ignore_index=True)
 
@@ -157,24 +155,32 @@ def QueryFromServer(config, **kwargs):
 
 
         df_criteria['SVS_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], image_id+'.svs') for image_id in df_criteria['id_external']]
+        df_criteria['NPY_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], image_id+'.npy') for image_id in df_criteria['id_external']]
         df = pd.concat([df, df_criteria])
         
     conn.close()
     return df
 
-def Synchronize(config, df):
-    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
+def SynchronizeSVS(config, df):
+
     for index, image in df.iterrows():
-        filepath = Path(config['DATA']['SVS_Folder'], image['id_external']+'.svs')  
+        filepath = image['SVS_PATH']
         if filepath.is_file():  # Exist
             if not filepath.stat().st_size == image['Size']:  # Corrupted
                 print("File size doesn't match, redownloading")
                 os.remove(filepath)
                 download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
-                download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
+                
         else:  ## Doesn't exist
             print("Doesn't exist")
             download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
             download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
-    conn.close()
+
             
+def SynchronizeAnnotation(config, df):
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
+    for index, image in df.iterrows():
+        if not filepath.is_file():  # Doesn't exist            
+            filepath = image['NPY_PATH']
+            download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
+            conn.close()

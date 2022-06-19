@@ -11,13 +11,12 @@ from Model.ConvNet import ConvNet
 from sklearn import preprocessing
 
 config = toml.load(sys.argv[1])
-#config = toml.load('../Configs/sarcoma/trainer_sarcoma_convnet.ini')
-
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
 dataset = QueryFromServer(config)
-Synchronize(config, dataset)
+SynchronizeSVS(config, dataset)
+SynchronizeAnnotation(config, dataset)
 print(dataset)
 
 ########################################################################################################################
@@ -118,11 +117,10 @@ data = DataModule(
     sampling_scheme=config['DATA']['Sampling_Scheme'],
     label_encoder=le
 )
+# Give the user some insight on the data
 GetInfo.ShowTrainValTestInfo(data, config)
 
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 config['DATA']['loss_weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
-
-# Give the user some insight on the data
 
 trainer.fit(model, data)

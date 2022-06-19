@@ -15,7 +15,7 @@ config = toml.load(sys.argv[1])
 # 1. Download all relevant files based on the configuration file
 
 dataset = QueryFromServer(config)
-Synchronize(config, dataset)
+SynchronizeSVS(config, dataset)
 print(dataset)
 ########################################################################################################################
 # 2. Pre-processing: create npy files
