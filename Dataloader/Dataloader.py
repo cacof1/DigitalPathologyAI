@@ -165,8 +165,8 @@ def SynchronizeSVS(config, df):
 
     for index, image in df.iterrows():
         filepath = image['SVS_PATH']
-        if filepath.is_file():  # Exist
-            if not filepath.stat().st_size == image['Size']:  # Corrupted
+        if os.path.exists(filepath):  # Exist
+            if not os.path.getsize(filepath) == image['Size']:  # Corrupted
                 print("File size doesn't match, redownloading")
                 os.remove(filepath)
                 download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
@@ -180,7 +180,7 @@ def SynchronizeSVS(config, df):
 def SynchronizeAnnotation(config, df):
     conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
     for index, image in df.iterrows():
-        if not filepath.is_file():  # Doesn't exist            
+        if not os.path.exists(filepath):  # Doesn't exist            
             filepath = image['NPY_PATH']
             download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
             conn.close()

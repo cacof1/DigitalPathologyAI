@@ -122,7 +122,7 @@ def rgba_to_int(red, green, blue, alpha=255):
 ### Download Annotation
 def download_annotation(image, image_dir):
     print("\nAnnotations on Dataset:", image.getName())
-    for ann in image.listAnnotations():
+    for ann in image.listAnnotations():                
         if isinstance(ann, omero.gateway.FileAnnotationWrapper):
             print("File ID:", ann.getFile().getId(), ann.getFile().getName(), "Size:", ann.getFile().getSize())
             file_path = os.path.join(image_dir, ann.getFile().getName())

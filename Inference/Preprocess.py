@@ -11,7 +11,7 @@ config = toml.load(sys.argv[1])
 # 1. Download all relevant files based on the configuration file
 
 dataset = QueryFromServer(config)
-Synchronize(config, dataset)
+SynchronizeSVS(config, dataset)
 print(dataset)
 
 ########################################################################################################################
@@ -69,6 +69,12 @@ for SVS_ID, df_split in coords_file.groupby(coords_file.SVS_ID):
     print("\nCreating an OriginalFile and FileAnnotation")
     file_ann = conn.createFileAnnfromLocalFile(npy_file, mimetype="text/plain", desc=None)
     print("Attaching FileAnnotation to Dataset: ", "File ID:", file_ann.getId(), ",", file_ann.getFile().getName(), "Size:", file_ann.getFile().getSize())
+
+    ## delete because Omero methods are moronic
+    to_delete = []
+    for ann in image.listAnnotations():
+        if isinstance(ann, omero.gateway.FileAnnotationWrapper): to_delete.append(ann.id)            
+    conn.deleteObjects('Annotation', to_delete, wait=True)
     image.linkAnnotation(file_ann)     # link it to dataset.                                                                                                                                                           
 conn.close()
 
