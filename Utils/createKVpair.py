@@ -3,6 +3,9 @@
 Created on Mon May  2 16:12:02 2022
 
 @author: zhuoy
+
+# Work in progress - will be removed/largely modified. Works as a temporary solution towards a more
+# complete data model.
 """
 
 import omero
@@ -21,19 +24,26 @@ my_exp_id = conn.getUser().getId()
 conn.SERVICE_OPTS.setOmeroGroup('-1')
 
 # Switch Group
-image = conn.getObject("Image", 4842)
+image = conn.getObject("Image", 4842)  # my group
+#image = conn.getObject("Image", 2173)  # for zhuoyan
 group_id = image.getDetails().getGroup().getId()
 conn.SERVICE_OPTS.setOmeroGroup(group_id)
 print("Current group: ", group_id)
 
 missing_value = ''  # fills empty fields using this value.
-csv_file = pd.read_csv('sarcoma_master.csv', keep_default_na=False).fillna(missing_value)
-# csv_file.drop('omero_status',axis=1,inplace=True)  # no need
-# csv_file = csv_file.astype({'leeds_id': 'int32'})  # no need
 
-# A list of keys we use to populate the Omero server
-keys = ['id_internal', 'diagnosis', 'tumour_grade',
-        'type']  # set up according to csv file for all but id (multiple possible sources)
+# for MS
+csv_file = pd.read_excel('/Users/mikael/Dropbox/M/PostDoc/UCL/datasets/Digital_Pathology/SARCOMA/_Res_SpindleCellSarcoma_LowGrade_anonymised_MS_21_june_22.xlsx', keep_default_na=False).fillna(missing_value)
+# for Zhuoyan
+#csv_file = pd.read_csv('mitotic_counts_master.csv', keep_default_na=False).fillna(missing_value)
+
+
+# for MS
+keys = ['id_internal', 'diagnosis', 'tumour_grade', 'type']  # set up according to csv file for all but id (multiple possible sources)
+
+# for Zhuoyan
+#keys = ['id_internal', 'diagnosis', 'type']
+
 
 for project in conn.listProjects():
     # original_file = get_original_file(project)
@@ -56,11 +66,11 @@ for project in conn.listProjects():
 
                 # This is not 100% robust, but the ID can come from either leeds or rnoh_leica fields. Take this into
                 # consideration:
-                if any(csv_file.leeds_id == image_name):
-                    svs_index = csv_file[csv_file.leeds_id == image_name].index[0]
+                if any(csv_file.leeds_id.astype(str) == image_name):
+                    svs_index = csv_file[csv_file.leeds_id.astype(str) == image_name].index[0]
                     id_key = 'leeds_id'
-                elif any(csv_file.rnoh_leica_id == image_name):
-                    svs_index = csv_file[csv_file.rnoh_leica_id == image_name].index[0]
+                elif any(csv_file.rnoh_leica_id.astype(str) == image_name):
+                    svs_index = csv_file[csv_file.rnoh_leica_id.astype(str) == image_name].index[0]
                     id_key = 'rnoh_leica_id'
 
                 print('Slide:{}, ID:{}'.format(image_name, image_id))
@@ -78,9 +88,9 @@ for project in conn.listProjects():
                     if (key in csv_file.columns) or (key == 'id_internal'):  # otherwise do nothing with it.
 
                         if key == 'id_internal':
-                            val = csv_file.loc[svs_index, id_key]
+                            val = str(csv_file.loc[svs_index, id_key])
                         else:
-                            val = csv_file.loc[svs_index, key]
+                            val = str(csv_file.loc[svs_index, key])
 
                         # if key not in updated_kv:  not useful, because we might want to update keys
                         updated_kv[key] = set()
