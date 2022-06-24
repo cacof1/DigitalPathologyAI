@@ -14,3 +14,4 @@ Inference/wsi_core/
 *.pyc
 *.pyc
 Utils/sarcoma_master.csv
+Utils/mitotic_counts_master.csv
