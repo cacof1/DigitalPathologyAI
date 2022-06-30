@@ -45,7 +45,8 @@ class Macenko(nn.Module):
         if fit is not None:
             self.fit(img)
 
-        img_norm, H, E = self.normalize(img, stains=self.get_stains)
+        img_norm, H, E = self.normalize(torch.mul(img, 255.0), stains=self.get_stains)
+        img_norm = torch.div(img_norm, 255.0)
 
         # Following normalization, img_norm will be of shape H x W x C -> return as C x H x W!
         if self.get_stains:
