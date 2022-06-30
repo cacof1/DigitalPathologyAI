@@ -17,7 +17,6 @@ from mpire import WorkerPool
 import datetime
 from sys import platform
 
-
 def ccw(A, B, C):
     return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
 
@@ -45,7 +44,6 @@ def roi_to_points(df):
             df['Points'][i] = fullstr
 
     return df
-
 
 def split_ROI_points(coords_string):
     coords = np.array([[float(coord_string.split(',')[0]), float(coord_string.split(',')[1])] for coord_string in
@@ -133,15 +131,7 @@ def tile_membership_contour(shared, edge):
         
     if any(patch_within_other_ROIs):
         return False
-
-    # Third condition: verify if the remove background condition is turned on, and apply.
-    # This is the code's main bottleneck as we need to load each patch, colour-normalise it, and assess its colour.
-    #if shared[2]:
-    #    background_fraction = patch_background_fraction(shared[0:3], edge)
-    #    if background_fraction > 0.5: return False
-            
     return True
-
 
 class PreProcessor:
 
@@ -219,7 +209,6 @@ class PreProcessor:
             cv2.drawContours(heatmap, contours, -1, col, 3)
 
         heatmap_PIL = Image.fromarray(heatmap)
-        # heatmap_PIL.show()
 
         # Export image to QA_path to evaluate the quality of the pre-processing.
         ID = row['id_external']
@@ -384,8 +373,6 @@ class PreProcessor:
                 label.extend(np.full(len(np.where(isInROI)[0]), self.preprocessing_mapping[ROI_name]))
 
         df_export = pd.DataFrame({'coords_x': coord_x, 'coords_y': coord_y, 'tissue_type': label})
-        df_export['SVS_PATH'] = row['SVS_PATH']
-
         return df_export
     
     # ----------------------------------------------------------------------------------------------------------------
@@ -393,11 +380,11 @@ class PreProcessor:
 
         # Download and organise contours
         if self.config['CONTOURS']: dataset['contour_file'] = self.organise_contours(dataset)
-
         df = pd.DataFrame()
         # process the dataset and export to npy.
         for idx, row in dataset.iterrows():  # WSI wise
             cur_dataset = self.contours_processing(row)
+            cur_dataset['SVS_ID'] = row['id_external']
             self.Create_Contours_Overlay_QA(row, cur_dataset)
             df = df.append(cur_dataset, ignore_index=True)
             print('--------------------------------------------------------------------------------')
@@ -413,8 +400,11 @@ class PreProcessor:
                                         ymax=WSI_object.level_dimensions[0][1],
                                         patch_size=self.patch_size)
             cur_dataset = pd.DataFrame({'coords_x': edges_to_test[:, 0], 'coords_y': edges_to_test[:, 1]})
+            cur_dataset['SVS_ID'] = row['id_external']
             cur_dataset['SVS_PATH'] = row['SVS_PATH']
             df = pd.concat([df, cur_dataset], ignore_index=True)
 
         print('--------------------------------------------------------------------------------')
         return df
+
+
