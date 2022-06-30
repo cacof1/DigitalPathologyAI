@@ -10,34 +10,28 @@ import torch
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 
-config = toml.load(sys.argv[1])
-#config = toml.load('../Configs/preprocessing/trainer_tumour_convnet.ini')
+n_gpus = torch.cuda.device_count()  # could go into config file
 
+config = toml.load(sys.argv[1])
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
-dataset = QueryFromServer(config)
-Synchronize(config, dataset)
-
-
+SVS_dataset = QueryFromServer(config)
+SynchronizeSVS(config, SVS_dataset)
+print(SVS_dataset)
 ########################################################################################################################
 # 2. Pre-processing: create npy files
 
 # option #1: preprocessor + save to npy
 preprocessor = PreProcessor(config)
-coords_file = preprocessor.getTilesFromAnnotations(dataset)
-SaveFileParameter(config, coords_file)
-print(coords_file)
+tile_dataset  = preprocessor.getTilesFromAnnotations(SVS_dataset)
 
-
-# option #2: load an existing preprocessing dataset
-# coords_file = LoadFileParameter(config, dataset)
-
-config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
-
+# option #2: load/save an existing preprocessing dataset
+# SaveFileParameter(config, tile_dataset)
+# tile_dataset = LoadFileParameter(config, SVS_dataset)
+config['DATA']['N_Classes'] = len(tile_dataset[config['DATA']['Label']].unique())
 ########################################################################################################################
-# 3. Model training
-
+# 3. Model 
 # Set up logging, model checkpoint
 name = GetInfo.format_model_name(config)
 if 'logger_folder' in config['CHECKPOINT']:
@@ -58,10 +52,8 @@ pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'])
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
             'NORMALIZATION'] else None,
-        transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.ToPILImage(),
         transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'],
                                magnitude=config['AUGMENTATION']['Rand_Magnitude']),
@@ -72,28 +64,35 @@ if config['AUGMENTATION']['Rand_Operations'] > 0:
 else:
     train_transform = transforms.Compose([
         transforms.ToTensor(),  # this also normalizes to [0,1].,
-        transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
             'NORMALIZATION'] else None,
-        transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 # transforms: colour norm only on validation set
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
-    transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
         'NORMALIZATION'] else None,
-    transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+trainer = pl.Trainer(gpus=n_gpus,
+                     strategy='ddp',
+                     benchmark=True,
+                     max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
+                     precision=config['BASEMODEL']['Precision'],
+                     callbacks=[checkpoint_callback, lr_monitor],
+                     logger=logger)
 
 le = preprocessing.LabelEncoder()
-le.fit(coords_file[config['DATA']['Label']])
+le.fit(tile_dataset[config['DATA']['Label']])
+model = ConvNet(config, label_encoder=le)
 
+########################################################################################################################
+# 3. Dataloader
+tile_dataset['SVS_PATH'] = tile_dataset.apply(lambda row:SVS_dataset.loc[SVS_dataset['id_internal']==row['SVS_ID']]['SVS_PATH'],axis=1) #Stitch SVS Path local to tile_dataset
 data = DataModule(
-    coords_file,
+    tile_dataset,
     batch_size=config['BASEMODEL']['Batch_Size'],
     train_transform=train_transform,
     val_transform=val_transform,
@@ -107,10 +106,13 @@ data = DataModule(
     sampling_scheme=config['DATA']['Sampling_Scheme'],
     label_encoder=le
 )
+
+# Give the user some insight on the data
+GetInfo.ShowTrainValTestInfo(data, config)
+"""
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 config['DATA']['loss_weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 
-"""
 The following will be used in an upcoming release to add weights to labels.
 N = sum(npatches_per_class)
 beta = (N-1)/N
@@ -122,17 +124,5 @@ print(config['DATA']['loss_weights'])
 * note: all the above could be moved directly into the ConvNet model or packaged in a function within Utils/
 * reference: Class-balanced Loss Based on Effective Number of Samples, Cui et al CVPR 2019.
 """
-
-# Give the user some insight on the data
-GetInfo.ShowTrainValTestInfo(data, config)
-
 # Load model and train
-trainer = pl.Trainer(gpus= torch.cuda.device_count(),
-                     benchmark=True,
-                     max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
-                     precision=config['BASEMODEL']['Precision'],
-                     callbacks=[checkpoint_callback, lr_monitor],
-                     logger=logger)
-
-model = ConvNet(config, label_encoder=le)
 trainer.fit(model, data)

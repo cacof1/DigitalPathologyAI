@@ -10,37 +10,32 @@ from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 from sklearn import preprocessing
 
-config = toml.load(sys.argv[1])
-#config = toml.load('../Configs/sarcoma/trainer_sarcoma_convnet.ini')
+n_gpus = torch.cuda.device_count()  # could go into config file
 
+config = toml.load(sys.argv[1])
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
-dataset = QueryFromServer(config)
-Synchronize(config, dataset)
-print(dataset)
+SVS_dataset = QueryFromServer(config)
+SynchronizeSVS(config, SVS_dataset)
+SynchronizeAnnotation(config, SVS_dataset)
+print(SVS_dataset)
 
 ########################################################################################################################
-# 2. Pre-processing: load existing npy files, append target label to coords_file, select tumour tiles only.
+# 2. Pre-processing: load existing npy files, append target label to tile_dataset, select tumour tiles only.
 
 # Load pre-processed dataset. It should have been pre-processed with Inference/Preprocess.py first.
-coords_file = LoadFileParameter(config, dataset)
+tile_dataset = LoadFileParameter(config, SVS_dataset)
 
-# Mask the coords_file to only keep the tumour tiles, depending on a pre-set criteria.
-coords_file = coords_file[coords_file['prob_tissue_type_tumour'] > 0.94]
+# Mask the tile_dataset to only keep the tumour tiles, depending on a pre-set criteria.
+tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_tumour'] > 0.85]
 
-# Append the target label to coords_file. If "diagnosis", make sure you also add the tumour grade at the end.
-coords_file[config['DATA']['Label']] = ''
-for index, row in dataset.iterrows():
-    label = row[config['DATA']['Label']] + row['tumour_grade'] if config['DATA']['Label'] == 'diagnosis' else ''
-    mask = coords_file.SVS_PATH == row.SVS_PATH
-    coords_file[config['DATA']['Label']][coords_file.SVS_PATH == row.SVS_PATH] = [label] * len(np.where(mask)[0])
+# Append the target label to tile_dataset. 
+tile_dataset[config['DATA']['Label']] = tile_dataset.apply(lambda row: SVS_dataset.loc[SVS_dataset['id_internal']==row['SVS_ID']][config['DATA']['Label']],axis=1)
 
-config['DATA']['N_Classes'] = len(coords_file[config['DATA']['Label']].unique())
-
+config['DATA']['N_Classes'] = len(tile_dataset[config['DATA']['Label']].unique())
 ########################################################################################################################
-# 3. Model training
-
+#3 Model
 # Set up logging, model checkpoint
 name = GetInfo.format_model_name(config)
 if 'logger_folder' in config['CHECKPOINT']:
@@ -61,10 +56,8 @@ pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
             'NORMALIZATION'] else None,
-        transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.ToPILImage(),
         transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'],
                                magnitude=config['AUGMENTATION']['Rand_Magnitude']),
@@ -75,29 +68,39 @@ if config['AUGMENTATION']['Rand_Operations'] > 0:
 else:
     train_transform = transforms.Compose([
         transforms.ToTensor(),  # this also normalizes to [0,1].,
-        transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
             'NORMALIZATION'] else None,
-        transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 # transforms: colour norm only on validation set
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
-    transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
         'NORMALIZATION'] else None,
-    transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
 # Create LabelEncoder
 le = preprocessing.LabelEncoder()
-le.fit(coords_file[config['DATA']['Label']])
+le.fit(tile_dataset[config['DATA']['Label']])
+
+# Load model and train
+trainer = pl.Trainer(gpus=n_gpus,
+                     strategy='ddp',
+                     benchmark=True,
+                     max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
+                     precision=config['BASEMODEL']['Precision'],
+                     callbacks=[checkpoint_callback, lr_monitor],
+                     logger=logger)
+
+model = ConvNet(config, label_encoder=le)
+
+########################################################################################################################
+#4 Dataloader
 
 data = DataModule(
-    coords_file,
+    tile_dataset,
     batch_size=config['BASEMODEL']['Batch_Size'],
     train_transform=train_transform,
     val_transform=val_transform,
@@ -111,20 +114,10 @@ data = DataModule(
     sampling_scheme=config['DATA']['Sampling_Scheme'],
     label_encoder=le
 )
+# Give the user some insight on the data
+GetInfo.ShowTrainValTestInfo(data, config)
 
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 config['DATA']['loss_weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 
-# Give the user some insight on the data
-GetInfo.ShowTrainValTestInfo(data, config)
-
-# Load model and train
-trainer = pl.Trainer(gpus=torch.cuda.device_count(),
-                     benchmark=True,
-                     max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
-                     precision=config['BASEMODEL']['Precision'],
-                     callbacks=[checkpoint_callback, lr_monitor],
-                     logger=logger)
-
-model = ConvNet(config, label_encoder=le)
 trainer.fit(model, data)
