@@ -23,9 +23,9 @@ import pytorch_lightning as pl
 
 config_AED = toml.load('Configuration_AED.ini')
 Slide_id = [sys.argv[1]]
-coords_file = LoadFileParameter(Slide_id, config_AED['SVS_Folder'], config_AED['Patches_Folder'])
+tile_dataset = LoadFileParameter(Slide_id, config_AED['SVS_Folder'], config_AED['Patches_Folder'])
 wsi_object = openslide.open_slide(config_AED['SVS_Folder'] + '/{}.svs'.format(Slide_id[0]))   
-dataset = DataGenerator(coords_file, transforms=T.Compose([T.ToTensor(),]), inference = True)
+dataset = DataGenerator(tile_dataset, transforms=T.Compose([T.ToTensor(),]), inference = True)
 
 Encoder = AutoEncoder.load_from_checkpoint(config_AED['Pretrained_AED'],config = config_AED).encoder
 trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
@@ -36,12 +36,12 @@ features_out    = features_out.reshape(features_out.shape[0],-1)
 #Clustering
 n_clusters = 3
 kmeans  = KMeans(n_clusters=n_clusters,verbose=1).fit(features_out)
-coords_file["labels"] = kmeans.labels_
-scores = np.array(coords_file.labels.to_list())
+tile_dataset["labels"] = kmeans.labels_
+scores = np.array(tile_dataset.labels.to_list())
 scores /= scores.max()
-coords = np.array(coords_file[["coords_x","coords_y"]])
+coords = np.array(tile_dataset[["coords_x","coords_y"]])
 
-labels = np.array(coords_file.labels.value_counts().index)
+labels = np.array(tile_dataset.labels.value_counts().index)
 def show_patch(coords,label,n):
     fig, axs = plt.subplots(1, n,figsize=(14,2))
     coords = coords[coords['labels']==label]
@@ -60,9 +60,9 @@ def show_patch(coords,label,n):
     plt.show()
     
 for label in labels:    
-    show_patch(coords_file,label =label,n=10)
+    show_patch(tile_dataset,label =label,n=10)
 #Select Targeted Region
 target_label = input('Enter the Label of the Targeted Region:/n')
-coords_file = coords_file[coords_file.labels == target_label]
-coords_file.reset_index(inplace=True,drop=True)
-coords_file.to_csv('{}_with_AED.csv'.format(Slide_id[0]),index=False)
+tile_dataset = tile_dataset[tile_dataset.labels == target_label]
+tile_dataset.reset_index(inplace=True,drop=True)
+tile_dataset.to_csv('{}_with_AED.csv'.format(Slide_id[0]),index=False)

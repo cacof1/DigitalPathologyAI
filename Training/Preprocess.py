@@ -11,7 +11,6 @@ from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 
 n_gpus = torch.cuda.device_count()  # could go into config file
-
 config = toml.load(sys.argv[1])
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
@@ -76,6 +75,7 @@ val_transform = transforms.Compose([
         'NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+
 trainer = pl.Trainer(gpus=n_gpus,
                      strategy='ddp',
                      benchmark=True,

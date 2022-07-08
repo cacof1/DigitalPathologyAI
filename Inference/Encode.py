@@ -57,7 +57,7 @@ Pretrained_Model = sys.argv[2]
 
 seed_everything(config['MODEL']['RANDOM_SEED'])
 ids              = WSIQuery(config)
-coords_file      = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
+tile_dataset      = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -72,7 +72,7 @@ trainer = pl.Trainer(gpus=1, max_epochs=config['MODEL']['Max_Epochs'],precision=
 trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model, config=config)
 
 ## Now predict
-test_dataset = DataLoader(DataGenerator(coords_file, transform= transform, inference = config['MODEL']['inference']), batch_size=config['MODEL']['Batch_Size'], num_workers=0, shuffle=False)
+test_dataset = DataLoader(DataGenerator(tile_dataset, transform= transform, inference = config['MODEL']['inference']), batch_size=config['MODEL']['Batch_Size'], num_workers=0, shuffle=False)
 
 
 features_out    = trainer.predict(trainer.model,test_dataset)
@@ -84,16 +84,16 @@ features_out    = features_out.reshape(features_out.shape[0],-1)
 n_clusters = 4
 kmeans  = KMeans(n_clusters=n_clusters,verbose=1,n_init= 1).fit(features_out)
 #df = pd.DataFrame()
-coords_file["clusters"] = kmeans.labels_
-coords_file["clusters"] = 255*coords_file["clusters"]/n_clusters
-print(coords_file)
+tile_dataset["clusters"] = kmeans.labels_
+tile_dataset["clusters"] = 255*tile_dataset["clusters"]/n_clusters
+print(tile_dataset)
 
 ## Testing
 """
 for i in range(10):
     plt.figure(figsize=(20, 2*n_clusters))
     for i in range(n_clusters):
-        df = coords_file[coords_file["labels"]==i]
+        df = tile_dataset[tile_dataset["labels"]==i]
         nImage = 10    
         imageId = np.random.randint(len(df), size=nImage)
         for j,num in enumerate(imageId):
@@ -134,23 +134,23 @@ for j in range(n):
 reducer = umap.UMAP()
 embedding = reducer.fit_transform(features_out)
 embedding.shape
-coords_file['embedding-one'] = embedding[:,0]
-coords_file['embedding-two'] = embedding[:,1]
+tile_dataset['embedding-one'] = embedding[:,0]
+tile_dataset['embedding-two'] = embedding[:,1]
 sns.scatterplot(
     x="embedding-one", y="embedding-two",
     hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
-    data=coords_file,
+    data=tile_dataset,
     legend="full",
     alpha=0.3
 )
 plt.show()
-print(coords_file)
+print(tile_dataset)
 
-coords = np.array(coords_file[["coords_x","coords_y"]])
-print(coords, coords_file["clusters"])
-wsi_file = openslide.open_slide(coords_file["wsi_path"].iloc[0])
-img = wsi_file.visHeatmap(coords_file["clusters"],coords,patch_size=(128, 128),segment=False, cmap='jet')
+coords = np.array(tile_dataset[["coords_x","coords_y"]])
+print(coords, tile_dataset["clusters"])
+wsi_file = openslide.open_slide(tile_dataset["wsi_path"].iloc[0])
+img = wsi_file.visHeatmap(tile_dataset["clusters"],coords,patch_size=(128, 128),segment=False, cmap='jet')
 plt.imshow(img)
 plt.colorbar()
 plt.show()
@@ -158,15 +158,15 @@ plt.show()
 ##PCA
 pca = PCA(n_components=n_clusters)
 pca_results = pca.fit_transform(features_out)
-coords_file['pca-one'] = pca_results[:,0]
-coords_file['pca-two'] = pca_results[:,1]
+tile_dataset['pca-one'] = pca_results[:,0]
+tile_dataset['pca-two'] = pca_results[:,1]
 
 plt.figure(figsize=(16,10))
 sns.scatterplot(
     x="pca-one", y="pca-two",
     hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
-    data=coords_file,
+    data=tile_dataset,
     legend="full",
     alpha=0.3
 )
@@ -178,15 +178,15 @@ pca_results = pca.fit_transform(features_out)
 tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300,n_jobs=10)
 tsne_results = tsne.fit_transform(pca_results)
 
-coords_file['tsne-2d-one'] = tsne_results[:,0]
-coords_file['tsne-2d-two'] = tsne_results[:,1]
+tile_dataset['tsne-2d-one'] = tsne_results[:,0]
+tile_dataset['tsne-2d-two'] = tsne_results[:,1]
 
 plt.figure(figsize=(16,10))
 sns.scatterplot(
     x="tsne-2d-one", y="tsne-2d-two",
     hue="clusters",
     palette=sns.color_palette("hls", n_clusters),
-    data=coords_file,
+    data=tile_dataset,
     legend="full",
     alpha=0.3
 )

@@ -18,14 +18,14 @@ class AnnotationReader:
     '''
     Args:
         wsi_file: Whole slide image with the form of .svs
-        coords_file: Coordinations of the patches with the form of .csv
+        tile_dataset: Coordinations of the patches with the form of .csv
         json_file: Json file including the annotation from pathologists
         annotation_type : Types of annotation to be read, including 'TumourContour','MitoticFigures'
     '''
     
-    def __init__(self, coords_file, wsi_file,json_file,annotation_type='TumourContour'):
+    def __init__(self, tile_dataset, wsi_file,json_file,annotation_type='TumourContour'):
         
-        self.coords_file      = pd.read_csv(coords_file)
+        self.tile_dataset      = pd.read_csv(tile_dataset)
         self.wsi_object       = openslide.open_slide(wsi_file)
         
         f = open(json_file,)
@@ -55,9 +55,9 @@ class AnnotationReader:
             mask = mask.transpose()          
             labels = []
             
-            for i in self.coords_file.shape[0]:
-                coord_x = self.coords_file['coords_x'][i]
-                coord_y = self.coords_file['coords_y'][i]
+            for i in self.tile_dataset.shape[0]:
+                coord_x = self.tile_dataset['coords_x'][i]
+                coord_y = self.tile_dataset['coords_y'][i]
                 
                 mask_temp = mask[coord_x:coord_x+self.dim[0],coord_y:coord_y+self.dim[1]]
     
@@ -75,12 +75,12 @@ class AnnotationReader:
     
             labels = np.array(labels)
             #masks = np.array(masks)
-            df = self.coords_file
+            df = self.tile_dataset
             df['label'] = labels
             
             return df
-            #df.to_csv('tumourous{}_{}.csv'.format(self.coords_file['patient_id'][0],self.dim[0]),index=False)
-            #np.save('TumourousMasks{}_{}'.format(self.coords_file['patient_id'][0],self.dim[0]), masks)
+            #df.to_csv('tumourous{}_{}.csv'.format(self.tile_dataset['patient_id'][0],self.dim[0]),index=False)
+            #np.save('TumourousMasks{}_{}'.format(self.tile_dataset['patient_id'][0],self.dim[0]), masks)
             
     
     def ReadMitoticFigures(self):   
@@ -157,13 +157,13 @@ class AnnotationReader:
                 
             df.drop(df_all[df_all['y_min']==df_all['y_max']].index,inplace=True)
             df.drop(df_all[df_all['x_min']==df_all['x_max']].index,inplace=True)
-            df['patient_id'] = [self.coords_file['patient_id'][0]] * df.shape[0]
+            df['patient_id'] = [self.tile_dataset['patient_id'][0]] * df.shape[0]
 
             df.reset_index(inplace=True,drop=True)
             
             return df
-            #df.to_csv('mitosis{}_{}.csv'.format(self.coords_file['patient_id'][0],self.dim[0]),index=False)
-            #print('mitosis{}_{}.csv SAVED'.format(self.coords_file['patient_id'][0],self.dim[0]))
+            #df.to_csv('mitosis{}_{}.csv'.format(self.tile_dataset['patient_id'][0],self.dim[0]),index=False)
+            #print('mitosis{}_{}.csv SAVED'.format(self.tile_dataset['patient_id'][0],self.dim[0]))
             
             
                      
@@ -180,16 +180,16 @@ def CreateDataset(filelist, dataset_type = 'TumourClassification'):
     '''
     dfs = []
     for filename in filelist:
-        coords_file = filename + '.csv'
+        tile_dataset = filename + '.csv'
         wsi_file = filename + '.svs'
         
         if dataset_type == 'TumourClassification':
             json_file = filename + 'TumourContour.json'
-            df = AnnotationReader(coords_file,wsi_file,json_file,annotation_type='TumourContour').ReadTumourContour()
+            df = AnnotationReader(tile_dataset,wsi_file,json_file,annotation_type='TumourContour').ReadTumourContour()
             
         elif dataset_type == 'MitosisDetection':
             json_file = filename + 'MitoticFigures.json'
-            df = AnnotationReader(coords_file,wsi_file,json_file,annotation_type='MitoticFigures').ReadMitoticFigures()
+            df = AnnotationReader(tile_dataset,wsi_file,json_file,annotation_type='MitoticFigures').ReadMitoticFigures()
             
         dfs.append(df)
         

@@ -49,8 +49,8 @@ Patch_Folder     = sys.argv[3]
 Pretrained_Model = sys.argv[4]
 
 ids                   = WSIQuery(MasterSheet)
-coords_file = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
-coords_file = coords_file[coords_file["tumour_label"] == 1]
+tile_dataset = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
+tile_dataset = tile_dataset[tile_dataset["tumour_label"] == 1]
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -69,7 +69,7 @@ trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model)
 output_shape = trainer.model.predict(torch.rand((1, n_classes, dim[0], dim[1]))).size()
 print("Inference",output_shape)
 ## Now train
-test_dataset = DataLoader(DataGenerator(coords_file[:1000], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
+test_dataset = DataLoader(DataGenerator(tile_dataset[:1000], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
 image_out    = trainer.predict(trainer.model,test_dataset)
 n = 10
 tmp = iter(test_dataset)

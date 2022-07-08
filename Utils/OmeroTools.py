@@ -35,6 +35,7 @@ def connect(hostname, username, password, **kwargs):
     """
     conn = BlitzGateway(username, password, host=hostname, secure=True, **kwargs)
     conn.connect()
+    conn.SERVICE_OPTS.setOmeroGroup('-1')
     conn.c.enableKeepAlive(60)
     return conn
 
@@ -97,6 +98,7 @@ def create_roi(img, shapes):
 
 def connect_to_member(host, user, pw, target_group, target_member):
     conn = connect(host, user, pw, group=target_group)
+    conn.SERVICE_OPTS.setOmeroGroup('-1')
     group = conn.getGroupFromContext()  # get current group
     owners, members = group.groupSummary()  # List the group owners and other members
     target_member_ID = None
@@ -119,6 +121,20 @@ def rgba_to_int(red, green, blue, alpha=255):
         rgba_int = rgba_int - 2 ** 32
     return rgba_int
 
+### Download Annotation
+def download_annotation(image, image_dir):
+    print("\nAnnotations on Dataset:", image.getName())
+    for ann in image.listAnnotations():                
+        if isinstance(ann, omero.gateway.FileAnnotationWrapper):
+            print("File ID:", ann.getFile().getId(), ann.getFile().getName(), "Size:", ann.getFile().getSize())
+            file_path = os.path.join(image_dir, ann.getFile().getName())
+            with open(str(file_path), 'wb') as f:
+                print("\nDownloading file to", file_path, "...")
+                for chunk in ann.getFileInChunks():
+                    f.write(chunk)
+            print("File downloaded!")
+
+
 
 def download_image(imageid, image_dir, user, host, pw):
     login_cmd = user + "@" + host
@@ -129,6 +145,7 @@ def download_image(imageid, image_dir, user, host, pw):
 def download_omero_ROIs(config, dataset, download_path=None):
     # Connection to the correct group and identify the correct ID. Use user as target member.
     conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])  ## Group not implemented yet
+    conn.SERVICE_OPTS.setOmeroGroup('-1')
 
     # Set ROI options and load projects of target member
     roi_service = conn.getRoiService()
