@@ -1,7 +1,6 @@
 
 import matplotlib.pyplot as plt
 from pytorch_lightning import LightningDataModule, LightningModule, Trainer,seed_everything
-import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
 import pandas as pd
 import cv2,math
@@ -16,28 +15,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-#from piqa import SSIM
-from kornia.losses import SSIMLoss
-## Module - Dataloaders
-from Dataloader.Dataloader import LoadFileParameter, DataModule, DataGenerator, WSIQuery
 
 ## Module - Models
 from Model.unet import UNet,UNetUpBlock, UNetDownBlock, UNetEncoder
 from Model.resnet import ResNet, ResNetResidualBlock, ResNetEncoder, ResNetDecoder
 
 ## Main Model
-class AutoEncoder(LightningModule):
-    def __init__(self, config) -> None:
+class AutoEncoder_Dummy(LightningModule):
+    def __init__(self, config,model) -> None:
         super().__init__()
         self.config = config    
-        self.encoder = Encoder(backbone = self.config["MODEL"]["Backbone"], config = self.config)
-        output_shape = self.encoder(torch.rand((1, self.config["DATA"]["n_channel"], self.config["DATA"]["dim"][0][0], self.config["DATA"]["dim"][0][1] ))).size()
-        self.decoder = Decoder(output_shape = output_shape, config = config)
-        self.model = nn.Sequential(
-            self.encoder,
-            self.decoder
-        )
-        self.loss_fcn = getattr(torch.nn, self.config["MODEL"]["loss_function"])()
+        #self.encoder = Encoder(backbone = self.config["BASEMODEL"]["Backbone"], config = self.config)
+        #output_shape = self.encoder(torch.rand((1, self.config["DATA"]["n_channel"], self.config["DATA"]["dim"][0][0], self.config["DATA"]["dim"][0][1] ))).size()
+        #self.decoder = Decoder(output_shape = output_shape, config = config)
+        self.model = model
+        #nn.Sequential(
+        #    self.encoder,
+        #    self.decoder
+        #)
+        self.loss_fcn = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
+        
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
         return self.model(x)
             
@@ -64,10 +61,21 @@ class AutoEncoder(LightningModule):
         return prediction
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(),lr=self.config["OPTIMIZER"]["lr"],eps=self.config["OPTIMIZER"]["eps"])
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.config["OPTIMIZER"]["step_size"], gamma=self.config["OPTIMIZER"]["gamma"],verbose=True)
+        optimizer = getattr(torch.optim, self.config['OPTIMIZER']['Algorithm'])
+        optimizer = optimizer(self.parameters(),
+                              lr=self.config["OPTIMIZER"]["lr"],
+                              eps=self.config["OPTIMIZER"]["eps"],
+                              betas=(0.9, 0.999),
+                              weight_decay=self.config['REGULARIZATION']['Weight_Decay'])
+
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                                    step_size=self.config["SCHEDULER"]["Lin_Step_Size"],
+                                                    gamma=self.config["SCHEDULER"]["Lin_Gamma"])  # step size 5, gamma =0.5 
+                                                        
+
         return [optimizer], [scheduler]
-    
+
+"""
 class Encoder(LightningModule):
     def __init__(self,backbone=models.densenet121(), config = None) -> None:
         super().__init__()
@@ -108,3 +116,4 @@ class Decoder(LightningModule):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
         return self.decoder(x)    
+"""
