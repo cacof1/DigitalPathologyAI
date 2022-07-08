@@ -8,36 +8,36 @@ def ShowTrainValTestInfo(data, config):
 
     if config['ADVANCEDMODEL']['Inference'] is False:
 
-        label_counter = np.zeros(len(data.train_data.coords[target].unique()))
+        label_counter = np.zeros(len(data.train_data.tile_dataset[target].unique()))
 
         if config['VERBOSE']['Data_Info']:
 
             # Return some stats about what you're training/validating on...
-            for label in data.train_data.coords[target].unique():
-                npts_train = sum(data.train_data.coords[target] == label)
-                print('Your training dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_train, len(data.train_data.coords[target]), npts_train/len(data.train_data.coords[target])*100, label))
+            for label in data.train_data.tile_dataset[target].unique():
+                npts_train = sum(data.train_data.tile_dataset[target] == label)
+                print('Your training dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_train, len(data.train_data.tile_dataset[target]), npts_train/len(data.train_data.tile_dataset[target])*100, label))
                 label_counter[label] += npts_train
 
-            fc = data.train_data.coords.SVS_PATH.copy()
+            fc = data.train_data.tile_dataset.SVS_PATH.copy()
             print('Distribution of the {} patches from the {} file_ids within the training dataset: '.format(len(fc),len(fc.unique())))
             for f in fc.unique():
                 print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))
             print('------------------')
-            for label in data.val_data.coords[target].unique():
-                npts_valid = sum(data.val_data.coords[target] == label)
-                print('Your validation dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_valid, len(data.val_data.coords[target]), npts_valid/len(data.val_data.coords[target])*100, label))
+            for label in data.val_data.tile_dataset[target].unique():
+                npts_valid = sum(data.val_data.tile_dataset[target] == label)
+                print('Your validation dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_valid, len(data.val_data.tile_dataset[target]), npts_valid/len(data.val_data.tile_dataset[target])*100, label))
                 label_counter[label] += npts_valid
 
-            fc = data.val_data.coords.SVS_PATH.copy()
+            fc = data.val_data.tile_dataset.SVS_PATH.copy()
             print('Distribution of the {} patches from the {} file_ids within the validation dataset: '.format(len(fc),len(fc.unique())))
             for f in fc.unique():
                 print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))
             print('------------------')
 
             try:
-                for label in data.test_data.coords[target].unique():
-                    print('Your test dataset has {}/{} patches of class {}.'.format(sum(data.test_data.coords[target] == label), len(data.test_data.coords[target]), label))
-                fc = data.test_data.coords.file_id.copy()
+                for label in data.test_data.tile_dataset[target].unique():
+                    print('Your test dataset has {}/{} patches of class {}.'.format(sum(data.test_data.tile_dataset[target] == label), len(data.test_data.tile_dataset[target]), label))
+                fc = data.test_data.tile_dataset.file_id.copy()
                 print('Distribution of the {} patches from the {} file_ids within the test dataset: '.format(len(fc),len(fc.unique())))
                 for f in fc.unique():
                     print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))
