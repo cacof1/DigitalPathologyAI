@@ -82,8 +82,7 @@ for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
     npy_file = SaveFileParameter(config, df_split, SVS_ID)
 
 ########################################################################################################################
-## Send back to OMERO - broken for now due to bad group (?)
-
+## Send back to OMERO 
 
 conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
 conn.SERVICE_OPTS.setOmeroGroup('-1')
