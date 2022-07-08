@@ -67,6 +67,9 @@ conn.SERVICE_OPTS.setOmeroGroup('-1')
 
 for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
     image = conn.getObject("Image", SVS_dataset.loc[SVS_dataset["id_internal"]==SVS_ID].iloc[0]['id_omero'])
+    group_id = image.getDetails().getGroup().getId()
+    conn.SERVICE_OPTS.setOmeroGroup(group_id)
+    print("Current group: ", group_id)
     npy_file = SaveFileParameter(config, df_split, SVS_ID)
     print("\nCreating an OriginalFile and FileAnnotation")
     file_ann = conn.createFileAnnfromLocalFile(npy_file, mimetype="text/plain", desc=None)
@@ -76,7 +79,9 @@ for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
     to_delete = []
     for ann in image.listAnnotations():
         if isinstance(ann, omero.gateway.FileAnnotationWrapper): to_delete.append(ann.id)            
-    conn.deleteObjects('Annotation', to_delete, wait=True)
-    image.linkAnnotation(file_ann)     # link it to dataset.                                                                                                                                                           
+        conn.deleteObjects('Annotation', to_delete, wait=True)
+    image.linkAnnotation(file_ann)     # link it to dataset.                  
+    print('{}.npy uploaded'.format(SVS_ID))
+    
 conn.close()
-
+print('CONNECTION CLOSED')
