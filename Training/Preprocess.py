@@ -10,6 +10,7 @@ import torch
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 
+n_gpus = torch.cuda.device_count()  # could go into config file
 config = toml.load(sys.argv[1])
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
@@ -50,10 +51,8 @@ pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'])
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
             'NORMALIZATION'] else None,
-        transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.ToPILImage(),
         transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'],
                                magnitude=config['AUGMENTATION']['Rand_Magnitude']),
@@ -64,23 +63,21 @@ if config['AUGMENTATION']['Rand_Operations'] > 0:
 else:
     train_transform = transforms.Compose([
         transforms.ToTensor(),  # this also normalizes to [0,1].,
-        transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
             'NORMALIZATION'] else None,
-        transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 # transforms: colour norm only on validation set
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
-    transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
         'NORMALIZATION'] else None,
-    transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
-trainer = pl.Trainer(gpus= torch.cuda.device_count(),
+
+trainer = pl.Trainer(gpus=n_gpus,
+                     strategy='ddp',
                      benchmark=True,
                      max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
                      precision=config['BASEMODEL']['Precision'],

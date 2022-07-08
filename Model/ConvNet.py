@@ -51,8 +51,8 @@ class ConvNet(pl.LightningModule):
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
         acc = accuracy(preds, labels)
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('train_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log('train_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return loss
 
     def validation_step(self, val_batch, batch_idx):
@@ -62,8 +62,8 @@ class ConvNet(pl.LightningModule):
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
         acc = accuracy(preds, labels)
-        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('val_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log('val_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return loss
 
     def testing_step(self, test_batch, batch_idx):
@@ -73,14 +73,18 @@ class ConvNet(pl.LightningModule):
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
         acc = accuracy(preds, labels)
-        self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('test_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log('test_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return loss
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
+
         image = batch
         image = next(iter(image.values()))  ## Take the first value in the dictonnary for single zoom
-        return softmax(self(image))
+
+        output = softmax(self(image), dim=1)
+
+        return self.all_gather(output)
 
     def configure_optimizers(self):
         optimizer = getattr(torch.optim, self.config['OPTIMIZER']['Algorithm'])

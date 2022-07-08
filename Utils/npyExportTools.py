@@ -3,8 +3,6 @@ Set of tools to manage .npy creation to save patch data.
 """
 import numpy as np
 import pandas as pd
-from deepdiff import DeepDiff
-# from openpyxl.styles.alignment import Alignment
 import os
 # import xlsxwriter
 

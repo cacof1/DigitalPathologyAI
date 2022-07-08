@@ -401,7 +401,11 @@ class PreProcessor:
                                         patch_size=self.patch_size)
             cur_dataset = pd.DataFrame({'coords_x': edges_to_test[:, 0], 'coords_y': edges_to_test[:, 1]})
             cur_dataset['SVS_ID'] = row['id_external']
+            cur_dataset['SVS_PATH'] = row['SVS_PATH']
+
             df = pd.concat([df, cur_dataset], ignore_index=True)
 
         print('--------------------------------------------------------------------------------')
         return df
+
+

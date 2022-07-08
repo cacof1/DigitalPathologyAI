@@ -9,7 +9,7 @@ import torch
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 from sklearn import preprocessing
-
+n_gpus = torch.cuda.device_count()  # could go into config file
 config = toml.load(sys.argv[1])
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
@@ -25,8 +25,10 @@ print(SVS_dataset)
 # Load pre-processed dataset. It should have been pre-processed with Inference/Preprocess.py first.
 tile_dataset = LoadFileParameter(config, SVS_dataset)
 
+
 # Mask the tile_dataset to only keep the tumour tiles, depending on a pre-set criteria.
-tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_tumour'] > 0.94]
+tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_tumour'] > 0.85]
+
 
 # Append the target label to tile_dataset. 
 tile_dataset[config['DATA']['Label']] = tile_dataset.apply(lambda row: SVS_dataset.loc[SVS_dataset['id_internal']==row['SVS_ID']][config['DATA']['Label']],axis=1)
@@ -54,10 +56,8 @@ pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
             'NORMALIZATION'] else None,
-        transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.ToPILImage(),
         transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'],
                                magnitude=config['AUGMENTATION']['Rand_Magnitude']),
@@ -68,20 +68,16 @@ if config['AUGMENTATION']['Rand_Operations'] > 0:
 else:
     train_transform = transforms.Compose([
         transforms.ToTensor(),  # this also normalizes to [0,1].,
-        transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
             'NORMALIZATION'] else None,
-        transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 # transforms: colour norm only on validation set
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
-    transforms.Lambda(lambda x: x * 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
         'NORMALIZATION'] else None,
-    transforms.Lambda(lambda x: x / 255) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
@@ -90,7 +86,10 @@ le = preprocessing.LabelEncoder()
 le.fit(tile_dataset[config['DATA']['Label']])
 
 # Load model and train
-trainer = pl.Trainer(gpus=torch.cuda.device_count(),
+
+trainer = pl.Trainer(gpus=n_gpus,
+                     strategy='ddp',
+
                      benchmark=True,
                      max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
                      precision=config['BASEMODEL']['Precision'],

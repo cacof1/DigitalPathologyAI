@@ -97,7 +97,6 @@ def LoadFileParameter(config, dataset):
     for npy_path in dataset.NPY_PATH:
         existing_df = np.load(npy_path, allow_pickle=True).item()[cur_basemodel_str][1]
         tile_dataset = pd.concat([tile_dataset, existing_df], ignore_index=True)
-
     return tile_dataset
 
 def SaveFileParameter(config, df, SVS_ID):
@@ -151,13 +150,14 @@ def QueryFromServer(config, **kwargs):
         ## Version 2 -- populate everything (fragile)
         df_criteria = pd.DataFrame()            
         for row in result: ## Transform the results into a panda dataframe for each found match
-            temp = pd.DataFrame([[row[0].val, Path(row[1].val).stem, row[2].val, *row[3].val.getMapValueAsMap().values()] for row in result],
+            temp = pd.DataFrame([[row[0].val, Path(row[1].val).stem, row[2].val, *row[3].val.getMapValueAsMap().values()]],
                                 columns=["id_omero", "id_external", "Size", *row[3].val.getMapValueAsMap().keys()])
             df_criteria = pd.concat([df_criteria, temp])                                    
 
 
         df_criteria['SVS_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], image_id+'.svs') for image_id in df_criteria['id_external']]
-        df_criteria['NPY_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], image_id+'.npy') for image_id in df_criteria['id_external']]
+        df_criteria['NPY_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], 'patches', image_id+'.npy') for image_id in df_criteria['id_external']]
+
         df = pd.concat([df, df_criteria])
         
     conn.close()
@@ -165,18 +165,25 @@ def QueryFromServer(config, **kwargs):
 
 def SynchronizeSVS(config, df):
 
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
+    conn.SERVICE_OPTS.setOmeroGroup('-1')
+
+
     for index, image in df.iterrows():
         filepath = image['SVS_PATH']
         if os.path.exists(filepath):  # Exist
             if not os.path.getsize(filepath) == image['Size']:  # Corrupted
-                print("File size doesn't match, redownloading")
+                print("SVS File size does not match - redownloading...")
+
                 os.remove(filepath)
                 download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
                 
         else:  ## Doesn't exist
-            print("Doesn't exist")
+            print("SVS File does not exist - downloading...")
             download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
             download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
+
+    conn.close()
 
             
 def SynchronizeAnnotation(config, df):
@@ -187,4 +194,12 @@ def SynchronizeAnnotation(config, df):
         if not os.path.exists(image['NPY_PATH']):  # Doesn't exist                        
             download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
             
-    conn.close()
+
+def SynchronizeAnnotation(config, df):
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
+    conn.SERVICE_OPTS.setOmeroGroup('-1')
+    
+    for index, image in df.iterrows(): 
+        if not os.path.exists(image['NPY_PATH']):  # Doesn't exist                        
+            download_annotation(conn.getObject("Image", image['id_omero']), config['DATA']['SVS_Folder'])
+            
