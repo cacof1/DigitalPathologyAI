@@ -8,9 +8,8 @@ from Dataloader.Dataloader import *
 from Utils import MultiGPUTools
 
 n_gpus = torch.cuda.device_count()  # could go into config file
-
 config = toml.load(sys.argv[1])
-# config = toml.load('/home/dgs1/Software/DigitalPathologyAI/Configs/infer_tumour_convnet_7classes_for_sarcoma_dgs.ini')
+
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
@@ -20,13 +19,9 @@ print(SVS_dataset)
 
 ########################################################################################################################
 # 2. Pre-processing: create npy files
-# option #1: preprocessor + save to npy
+
 preprocessor = PreProcessor(config)
 tile_dataset = preprocessor.getAllTiles(SVS_dataset)
-
-# option #2: load/save existing
-# SaveFileParameter(config, tile_dataset)
-# tile_dataset = LoadFileParameter(config, SVS_dataset)
 
 ########################################################################################################################
 # 3. Model + dataloader
@@ -44,7 +39,7 @@ val_transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-data = DataLoader(DataGenerator(tile_dataset, transform=val_transform, inference=True),
+data = DataLoader(DataGenerator(tile_dataset, transform=val_transform, svs_folder=config['DATA']['SVS_Folder'], inference=True),
                   batch_size=config['BASEMODEL']['Batch_Size'],
                   num_workers=10,
                   persistent_workers=True,
@@ -78,11 +73,12 @@ for tissue_no, tissue_name in enumerate(tissue_names):
         predicted_classes_prob[:, tissue_no], index=tile_dataset.index)
     tile_dataset = tile_dataset.fillna(0)
 
+# todo: remove both following lines once the SaveFileParameter below works.
 for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
     npy_file = SaveFileParameter(config, df_split, SVS_ID)
 
 ########################################################################################################################
-## Send back to OMERO 
+# 6. Send back to OMERO
 
 conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
 conn.SERVICE_OPTS.setOmeroGroup('-1')
@@ -105,7 +101,7 @@ for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
         conn.deleteObjects('Annotation', to_delete, wait=True)
     image.linkAnnotation(
         file_ann)  # link it to dataset.
-    
+
     print('{}.npy uploaded'.format(SVS_ID))
-    
+
 conn.close()

@@ -6,6 +6,8 @@ def ShowTrainValTestInfo(data, config):
 
     target = config['DATA']['Label']
 
+    # todo: reorganise this mess below.
+
     if config['ADVANCEDMODEL']['Inference'] is False:
 
         label_counter = np.zeros(len(data.train_data.tile_dataset[target].unique()))
@@ -18,7 +20,7 @@ def ShowTrainValTestInfo(data, config):
                 print('Your training dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_train, len(data.train_data.tile_dataset[target]), npts_train/len(data.train_data.tile_dataset[target])*100, label))
                 label_counter[label] += npts_train
 
-            fc = data.train_data.tile_dataset.SVS_PATH.copy()
+            fc = data.train_data.tile_dataset.SVS_ID.copy()
             print('Distribution of the {} patches from the {} file_ids within the training dataset: '.format(len(fc),len(fc.unique())))
             for f in fc.unique():
                 print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))
@@ -28,7 +30,7 @@ def ShowTrainValTestInfo(data, config):
                 print('Your validation dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_valid, len(data.val_data.tile_dataset[target]), npts_valid/len(data.val_data.tile_dataset[target])*100, label))
                 label_counter[label] += npts_valid
 
-            fc = data.val_data.tile_dataset.SVS_PATH.copy()
+            fc = data.val_data.tile_dataset.SVS_ID.copy()
             print('Distribution of the {} patches from the {} file_ids within the validation dataset: '.format(len(fc),len(fc.unique())))
             for f in fc.unique():
                 print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))

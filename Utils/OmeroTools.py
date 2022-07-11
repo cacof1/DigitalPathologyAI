@@ -121,7 +121,7 @@ def rgba_to_int(red, green, blue, alpha=255):
         rgba_int = rgba_int - 2 ** 32
     return rgba_int
 
-### Download Annotation
+
 def download_annotation(image, image_dir):
     print("\nAnnotations on Dataset:", image.getName())
     for ann in image.listAnnotations():                
@@ -133,7 +133,6 @@ def download_annotation(image, image_dir):
                 for chunk in ann.getFileInChunks():
                     f.write(chunk)
             print("File downloaded!")
-
 
 
 def download_image(imageid, image_dir, user, host, pw):

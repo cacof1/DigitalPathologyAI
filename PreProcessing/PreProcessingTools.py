@@ -368,6 +368,7 @@ class PreProcessor:
                 else:
                     isInROI = np.full(len(edges_to_test), False)
                     for ei in tqdm(range(len(edges_to_test))): isInROI[ei] = tile_membership_contour(shared, edges_to_test[ei, :])
+
                 coord_x.extend(edges_to_test[isInROI, 0])
                 coord_y.extend(edges_to_test[isInROI, 1])
                 label.extend(np.full(len(np.where(isInROI)[0]), self.preprocessing_mapping[ROI_name]))
@@ -388,6 +389,8 @@ class PreProcessor:
             self.Create_Contours_Overlay_QA(row, cur_dataset)
             df = df.append(cur_dataset, ignore_index=True)
             print('--------------------------------------------------------------------------------')
+
+        df[['coords_x', 'coords_y']] = df[['coords_x', 'coords_y']].astype('int')
         return df
 
     def getAllTiles(self, dataset):
@@ -401,8 +404,6 @@ class PreProcessor:
                                         patch_size=self.patch_size)
             cur_dataset = pd.DataFrame({'coords_x': edges_to_test[:, 0], 'coords_y': edges_to_test[:, 1]})
             cur_dataset['SVS_ID'] = row['id_external']
-            cur_dataset['SVS_PATH'] = row['SVS_PATH']
-
             df = pd.concat([df, cur_dataset], ignore_index=True)
 
         print('--------------------------------------------------------------------------------')
