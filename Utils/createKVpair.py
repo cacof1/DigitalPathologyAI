@@ -72,6 +72,8 @@ for project in conn.listProjects():
                 elif any(csv_file.rnoh_leica_id.astype(str) == image_name):
                     svs_index = csv_file[csv_file.rnoh_leica_id.astype(str) == image_name].index[0]
                     id_key = 'rnoh_leica_id'
+                else:  # current omero image is not found in local .csv, skip to next one.
+                    continue
 
                 print('Slide:{}, ID:{}'.format(image_name, image_id))
 

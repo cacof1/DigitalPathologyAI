@@ -16,7 +16,7 @@ def sample_n_per_sample_per_label_and_equalize(tile_dataset, target=None, n_per_
     # This is appropriate if you have large heterogeneity in your data (high variability in the number of patches per
     # label across WSIs).
 
-    all_ids = tile_dataset['SVS_PATH'].unique()
+    all_ids = tile_dataset['SVS_ID'].unique()
     all_labels = tile_dataset[target].unique()
     final_contribution = np.zeros((len(all_labels), len(all_ids)))
 
@@ -35,7 +35,7 @@ def sample_n_per_sample_per_label_and_equalize(tile_dataset, target=None, n_per_
 
             for idi in range(len(all_ids)):
                 cid = all_ids[idi]
-                df_per_label_per_svs = df_per_label[df_per_label['SVS_PATH'] == cid]
+                df_per_label_per_svs = df_per_label[df_per_label['SVS_ID'] == cid]
                 npatches_in_sample = len(df_per_label_per_svs)
 
                 if (final_contribution[li, idi] + increment) <= npatches_in_sample:
@@ -52,7 +52,7 @@ def sample_n_per_sample_per_label_and_equalize(tile_dataset, target=None, n_per_
 
     # Patch sampling is achieved with the following:
     df_list = []
-    grouped = tile_dataset.groupby('SVS_PATH')
+    grouped = tile_dataset.groupby('SVS_ID')
     for current_fileid, group in grouped:
         grouped2 = group.groupby(target)
         for current_label, group2 in grouped2:
@@ -76,13 +76,13 @@ def sample_N_per_WSI(tile_dataset, n_per_sample=np.Inf):
     # Simple sampler: randomly sample min(n_per_sample,n_patches_i) patches for each WSI of index i.
     # This is appropriate when you have a single class per WSI, or if the classes are balanced within each WSI.
 
-    value_counts = tile_dataset.SVS_PATH.value_counts()
+    value_counts = tile_dataset.SVS_ID.value_counts()
     fn_for_sampling = value_counts[value_counts > n_per_sample].index
-    df1 = tile_dataset[tile_dataset['SVS_PATH'].isin(fn_for_sampling)].groupby("SVS_PATH").sample(n=n_per_sample,
+    df1 = tile_dataset[tile_dataset['SVS_ID'].isin(fn_for_sampling)].groupby("SVS_ID").sample(n=n_per_sample,
                                                                                               replace=False)
 
     if fn_for_sampling.shape != value_counts.shape:  # if some datasets have less than n_per_sample
-        df2 = tile_dataset[~tile_dataset['SVS_PATH'].isin(fn_for_sampling)].groupby("SVS_PATH").sample(frac=1)
+        df2 = tile_dataset[~tile_dataset['SVS_ID'].isin(fn_for_sampling)].groupby("SVS_ID").sample(frac=1)
         return pd.concat([df1, df2])
     else:
         return df1

@@ -21,11 +21,8 @@ def pad_size(n_examples, n_gpus, batch_size):
 
     # The number to use for padding is equal to the difference between n_left_out and batch_size*n_gpus.
 
-    if n_gpus == 1:
-        return int(0)
-    else:
-        pad = batch_size * n_gpus - n_left_out
-        return pad.astype(int)
+    pad = batch_size * n_gpus - n_left_out
+    return pad.astype(int)
 
 
 def pad_dataframe(df, n_pad):
