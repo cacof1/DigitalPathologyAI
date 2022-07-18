@@ -19,20 +19,20 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 ## Module - Models
 from Model.unet import UNet,UNetUpBlock, UNetDownBlock, UNetEncoder
 from Model.resnet import ResNet, ResNetResidualBlock, ResNetEncoder, ResNetDecoder
-
+import monai
 ## Main Model
-class AutoEncoder_Dummy(LightningModule):
-    def __init__(self, config,model) -> None:
+class AutoEncoder(LightningModule):
+    def __init__(self, config) -> None:
         super().__init__()
         self.config = config    
-        #self.encoder = Encoder(backbone = self.config["BASEMODEL"]["Backbone"], config = self.config)
-        #output_shape = self.encoder(torch.rand((1, self.config["DATA"]["n_channel"], self.config["DATA"]["dim"][0][0], self.config["DATA"]["dim"][0][1] ))).size()
-        #self.decoder = Decoder(output_shape = output_shape, config = config)
-        self.model = model
-        #nn.Sequential(
-        #    self.encoder,
-        #    self.decoder
-        #)
+        self.model = getattr(monai.networks.nets, config['BASEMODEL']['Backbone'])
+        self.model = self.model(spatial_dims=2,
+                                in_channels=1,
+                                out_channels=1,
+                                channels=(2, 4, 8),
+                                strides=(2, 2, 2))
+
+
         self.loss_fcn = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -40,7 +40,6 @@ class AutoEncoder_Dummy(LightningModule):
             
     def training_step(self, batch, batch_idx):        
         image,label = batch
-        image       = next(iter(image.values())) ## Take the first value in the dictonnary for single zoom
         prediction  = self.forward(image)
         loss        = self.loss_fcn(prediction, image)
         self.log("loss", loss)
@@ -48,7 +47,6 @@ class AutoEncoder_Dummy(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         image,label = batch
-        image       = next(iter(image.values())) 
         prediction  = self.forward(image)
         loss        = self.loss_fcn(prediction, image)
         self.log("val_loss", loss)
@@ -56,7 +54,6 @@ class AutoEncoder_Dummy(LightningModule):
     
     def predict_step(self, batch, batch_idx):
         image       = batch
-        image       = next(iter(image.values()))
         prediction  = self.forward(image)
         return prediction
     
@@ -68,52 +65,23 @@ class AutoEncoder_Dummy(LightningModule):
                               betas=(0.9, 0.999),
                               weight_decay=self.config['REGULARIZATION']['Weight_Decay'])
 
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
-                                                    step_size=self.config["SCHEDULER"]["Lin_Step_Size"],
-                                                    gamma=self.config["SCHEDULER"]["Lin_Gamma"])  # step size 5, gamma =0.5 
-                                                        
+        if self.config['SCHEDULER']['Type'] == 'cosine_warmup':
+            n_steps_per_epoch = self.config['DATA']['N_Training_Examples'] // self.config['BASEMODEL']['Batch_Size']
+            total_steps = n_steps_per_epoch * self.config['ADVANCEDMODEL']['Max_Epochs']
+            warmup_steps = self.config['SCHEDULER']['Cos_Warmup_Epochs'] * n_steps_per_epoch
 
-        return [optimizer], [scheduler]
+            sched = transformers.optimization.get_cosine_schedule_with_warmup(optimizer,
+                                                                              num_warmup_steps=warmup_steps,
+                                                                              num_training_steps=total_steps,
+                                                                              num_cycles=0.5)  # default lr->0.                                                                                                    
 
-"""
-class Encoder(LightningModule):
-    def __init__(self,backbone=models.densenet121(), config = None) -> None:
-        super().__init__()
-        if(backbone=="ResNet"):
-            self.encoder  = ResNetEncoder(in_channels=config['DATA']['n_channel'], depth=config['MODEL']['depth'], wf =config['MODEL']['wf'])
-        elif(backbone=="UNet"):
-            self.encoder = UNetEncoder(in_channels=config['DATA']['n_channel'], depth=config['MODEL']['depth'], wf =config['MODEL']['wf'])
-        else:
-            self.encoder = nn.Sequential(*list(getattr(models, config["MODEL"]["Backbone"])().children())[:-1])
+            scheduler = {'scheduler': sched,
+                         'interval': 'step',
+                         'frequency': 1}
 
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return self.encoder(x)
-
-    def predict_step(self, batch, batch_idx):
-        image       = batch
-        image       = next(iter(image.values()))
-        prediction  = self.forward(image)
-        return prediction
-
-class Decoder(LightningModule):
-    def __init__(self,output_shape=(1,1024,4,4,), config=None) -> None: 
-        super().__init__()
-        if(config['MODEL']['Backbone']=='ResNet'):
-            self.decoder = ResNetDecoder(in_channels = output_shape[1], n_classes =config['DATA']['n_channel'], depth =config['MODEL']['depth'], wf = config['MODEL']['wf'])
-        else:
-            depth        = int(math.log(128,2) - math.log(output_shape[-1],2))
-            in_channels  = output_shape[1]
-            out_channels = 0
-            self.decoder = nn.ModuleList()
-            for i in reversed(range(depth)):
-                out_channels = int(2**(math.log(in_channels,2)-1))
-                self.decoder.append(UNetUpBlock(in_channels, out_channels))
-                in_channels  = out_channels
-
-            self.decoder.append(nn.Conv2d(out_channels, config['DATA']['n_channel'] , kernel_size=1,stride=1))
-            self.decoder = nn.Sequential(*self.decoder)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return self.decoder(x)    
-"""
+        elif self.config['SCHEDULER']['Type'] == 'stepLR':
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                                        step_size=self.config["SCHEDULER"]["Lin_Step_Size"],
+                                                        gamma=self.config["SCHEDULER"][
+                                                            "Lin_Gamma"])  # step size 5, gamma =0.5                                                                                                               
+        return ([optimizer], [scheduler])

@@ -100,7 +100,7 @@ trainer = pl.Trainer(gpus=n_gpus,
                      callbacks=[checkpoint_callback, lr_monitor],
                      logger=logger)
 
-model = ConvNet(config, label_encoder=le)
+model   = ConvNet(config, label_encoder=le)
 
 ########################################################################################################################
 # 4. Dataloader

@@ -46,7 +46,6 @@ class ConvNet(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         image, labels = train_batch
-        image = next(iter(image.values()))  ## Take the first value in the dictonnary for single zoom
         logits = self.forward(image)
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
@@ -57,7 +56,6 @@ class ConvNet(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         image, labels = val_batch
-        image = next(iter(image.values()))  ## Take the first value in the dictonnary for single zoom
         logits = self.forward(image)
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
@@ -68,7 +66,6 @@ class ConvNet(pl.LightningModule):
 
     def testing_step(self, test_batch, batch_idx):
         image, labels = test_batch
-        image = next(iter(image.values()))  ## Take the first value in the dictonnary for single zoom
         logits = self.forward(image)
         loss = self.loss_fcn(logits, labels)
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
@@ -80,8 +77,6 @@ class ConvNet(pl.LightningModule):
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
 
         image = batch
-        image = next(iter(image.values()))  ## Take the first value in the dictonnary for single zoom
-
         output = softmax(self(image), dim=1)
 
         return self.all_gather(output)
@@ -93,27 +88,25 @@ class ConvNet(pl.LightningModule):
                               eps=self.config["OPTIMIZER"]["eps"],
                               betas=(0.9, 0.999),
                               weight_decay=self.config['REGULARIZATION']['Weight_Decay'])
-
+    
         if self.config['SCHEDULER']['Type'] == 'cosine_warmup':
             # https://huggingface.co/docs/transformers/main_classes/optimizer_schedules
             # https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
             n_steps_per_epoch = self.config['DATA']['N_Training_Examples'] // self.config['BASEMODEL']['Batch_Size']
             total_steps = n_steps_per_epoch * self.config['ADVANCEDMODEL']['Max_Epochs']
             warmup_steps = self.config['SCHEDULER']['Cos_Warmup_Epochs'] * n_steps_per_epoch
-
+            
             sched = transformers.optimization.get_cosine_schedule_with_warmup(optimizer,
                                                                               num_warmup_steps=warmup_steps,
                                                                               num_training_steps=total_steps,
                                                                               num_cycles=0.5)  # default lr->0.
-
+            
             scheduler = {'scheduler': sched,
                          'interval': 'step',
                          'frequency': 1}
-
+            
         elif self.config['SCHEDULER']['Type'] == 'stepLR':
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
                                                         step_size=self.config["SCHEDULER"]["Lin_Step_Size"],
-                                                        gamma=self.config["SCHEDULER"][
-                                                            "Lin_Gamma"])  # step size 5, gamma =0.5
-
+                                                        gamma=self.config["SCHEDULER"]["Lin_Gamma"])  
         return ([optimizer], [scheduler])

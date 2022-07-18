@@ -20,7 +20,6 @@ def pad_size(n_examples, n_gpus, batch_size):
     n_left_out = n_examples - n_full_examples.astype(int)
 
     # The number to use for padding is equal to the difference between n_left_out and batch_size*n_gpus.
-
     pad = batch_size * n_gpus - n_left_out
     return pad.astype(int)
 

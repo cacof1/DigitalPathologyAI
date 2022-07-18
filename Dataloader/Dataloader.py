@@ -5,25 +5,23 @@ from sklearn import preprocessing
 import openslide
 import torch
 from collections import Counter
-#import npyExportTools
 import itertools
 import Utils.sampling_schemes as sampling_schemes
 from Utils.OmeroTools import *
 from Utils import npyExportTools
 from pathlib import Path
 
-
 class DataGenerator(torch.utils.data.Dataset):
 
-    def __init__(self, tile_dataset, target="tumour_label", dim_list=[(256, 256)], vis_list=[0], inference=False,
+    def __init__(self, tile_dataset, target="tumour_label", dim = (256, 256), vis = 0, inference=False,
                  transform=None, target_transform=None, svs_folder=None):
 
         super().__init__()
         self.transform = transform
         self.target_transform = target_transform
         self.tile_dataset = tile_dataset
-        self.vis_list = vis_list
-        self.dim_list = dim_list
+        self.vis       = vis
+        self.dim       = dim
         self.inference = inference
         self.target = target
         self.svs_folder = svs_folder
@@ -34,28 +32,22 @@ class DataGenerator(torch.utils.data.Dataset):
     def __getitem__(self, id):
         # load image
         svs_path = os.path.join(self.svs_folder, self.tile_dataset["SVS_ID"].iloc[id] + '.svs')
-        wsi_file = openslide.open_slide(svs_path)
-
-        data_dict = {}
-        for dim in self.dim_list:
-            for vis_level in self.vis_list:
-                key = "_".join(map(str, dim)) + "_" + str(vis_level)
-                data_dict[key] = np.array(
-                    wsi_file.read_region([self.tile_dataset["coords_x"].iloc[id], self.tile_dataset["coords_y"].iloc[id]],
-                                         vis_level, dim).convert("RGB"))
-
+        svs_file = openslide.open_slide(svs_path)
+        data = svs_file.read_region([self.tile_dataset["coords_x"].iloc[id], self.tile_dataset["coords_y"].iloc[id]], self.vis, self.dim).convert("RGB")
+        
+        
         ## Transform - Data Augmentation
-
-        if self.transform:
-            data_dict = {key: self.transform(value) for (key, value) in data_dict.items()}
+        if self.transform: data = self.transform(data)
 
         if self.inference:
-            return data_dict
-        else:
+            return data
+            
+        else: ## Training
             label = self.tile_dataset[self.target].iloc[id]
             if self.target_transform:
                 label = self.target_transform(label)
-            return data_dict, label
+
+            return data, label
 
 
 class DataModule(LightningDataModule):
@@ -66,23 +58,26 @@ class DataModule(LightningDataModule):
         super().__init__()
 
         self.batch_size = batch_size
-        tile_dataset[target] = label_encoder.transform(tile_dataset[target])
+        if(label_encoder):  tile_dataset[target] = label_encoder.transform(tile_dataset[target])  ## For classif only
 
         if sampling_scheme.lower() == 'wsi':
             tile_dataset_sampled = sampling_schemes.sample_N_per_WSI(tile_dataset, n_per_sample=n_per_sample)
+
             svi = np.unique(tile_dataset_sampled.SVS_ID)
             np.random.shuffle(svi)
+            print(tile_dataset,svi)
             train_idx, val_idx = train_test_split(svi, test_size=val_size, train_size=train_size)
+            print(train_idx)
             tile_dataset_train = tile_dataset_sampled[tile_dataset_sampled.SVS_ID.isin(train_idx)]
             tile_dataset_valid = tile_dataset_sampled[tile_dataset_sampled.SVS_ID.isin(val_idx)]
 
         elif sampling_scheme.lower() == 'patch':
             tile_dataset_sampled = sampling_schemes.sample_N_per_WSI(tile_dataset, n_per_sample=n_per_sample)
-            tile_dataset_train, tile_dataset_valid = train_test_split(tile_dataset_sampled,
-                                                                      test_size=val_size, train_size=train_size)
+            tile_dataset_train, tile_dataset_valid = train_test_split(tile_dataset_sampled, test_size=val_size, train_size=train_size)
+                                                                      
 
         else:  # assume custom split
-            sampler = getattr(sampling_schemes, sampling_scheme)
+            sampler = getattr(sampling_schemes, sampling_scheme) ## to change, Naming!
             tile_dataset_train, tile_dataset_valid = sampler(tile_dataset, target=target, n_per_sample=n_per_sample,
                                                              train_size=train_size, test_size=val_size)
 
@@ -115,7 +110,6 @@ def SaveFileParameter(config, df, SVS_ID):
     npy_dict[cur_basemodel_str] = [config, df]
     np.save(npy_path, npy_dict)
     return npy_path
-
 
 def QueryFromServer(config, **kwargs):
     print("Querying from Server")
