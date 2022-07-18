@@ -96,13 +96,12 @@ def LoadFileParameter(config, dataset):
     cur_basemodel_str = npyExportTools.basemodel_to_str(config)
     tile_dataset = pd.DataFrame()
     for npy_path in dataset.NPY_PATH:
-        existing_df = np.load(npy_path, allow_pickle=True).item()[cur_basemodel_str][1]
+        header, existing_df = np.load(npy_path, allow_pickle=True).item()[cur_basemodel_str]
         tile_dataset = pd.concat([tile_dataset, existing_df], ignore_index=True)
     return tile_dataset
 
 
 def SaveFileParameter(config, df, SVS_ID):
-
     cur_basemodel_str = npyExportTools.basemodel_to_str(config)
     npy_path = os.path.join(config['DATA']['SVS_Folder'], 'patches', SVS_ID + ".npy")
     os.makedirs(os.path.split(npy_path)[0], exist_ok=True)  # in case folder is non-existent
