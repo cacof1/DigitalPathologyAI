@@ -27,12 +27,12 @@ class AutoEncoder(LightningModule):
         self.config = config    
         self.model = getattr(monai.networks.nets, config['BASEMODEL']['Backbone'])
         self.model = self.model(spatial_dims=2,
-                                in_channels=1,
-                                out_channels=1,
-                                channels=(2, 4, 8),
+                                in_channels=3,
+                                out_channels=3,
+                                channels=(16, 32, 64),
                                 strides=(2, 2, 2))
 
-
+        print(self.model)
         self.loss_fcn = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -49,12 +49,25 @@ class AutoEncoder(LightningModule):
         image,label = batch
         prediction  = self.forward(image)
         loss        = self.loss_fcn(prediction, image)
+
+        if(batch_idx<3):
+            im          = np.swapaxes(prediction.cpu()[0],0,-1)
+            print(im)
+            print(im.dtype)
+            plt.imshow(im)
+            plt.show()
         self.log("val_loss", loss)
         return loss
     
     def predict_step(self, batch, batch_idx):
         image       = batch
         prediction  = self.forward(image)
+        im          = np.swapaxes(prediction.cpu().numpy()[0],0,-1)
+        print(im)
+        print(im.dtype)
+        
+        plt.imshow(im)
+        plt.show()
         return prediction
     
     def configure_optimizers(self):

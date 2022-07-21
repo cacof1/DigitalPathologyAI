@@ -139,16 +139,8 @@ class PreProcessor:
 
         self.config = config
 
-        # Robustness to various forms of Vis
-        self.vis = copy.copy(config['BASEMODEL']['Vis'][0])
-        if len(config['BASEMODEL']['Vis']) > 1:
-            print('Unsupported number of visibility levels, using the first one: {}'.format(self.vis))
-
-        # Robustness to various forms of Patch_Size
-        self.patch_size = copy.copy(config['BASEMODEL']['Patch_Size'][0])
-        if len(config['BASEMODEL']['Patch_Size']) > 1:
-            print('Unsupported number of patch sizes, using the first one: {}'.format(self.patch_size))
-
+        self.patch_size = config['BASEMODEL']['Patch_Size']
+        
         # Create some paths that are always the same defined with respect to the data folder.
         self.patches_folder = os.path.join(self.config['DATA']['SVS_Folder'], 'patches')
         os.makedirs(self.patches_folder, exist_ok=True)
@@ -157,7 +149,7 @@ class PreProcessor:
         self.contours_folder = Path(self.patches_folder, 'contours')
         os.makedirs(self.contours_folder, exist_ok=True)
 
-
+                                                                            
         # Tag the session
         e = datetime.datetime.now()
         self.config['INTERNAL'] = dict()
@@ -179,7 +171,7 @@ class PreProcessor:
         le = preprocessing.LabelEncoder()
         numerical_labels      = le.fit_transform(df_export['tissue_type'])
 
-        patch_size           = self.patch_size
+
         WSI_object           = openslide.open_slide(row['SVS_PATH'])
         vis_level_view       = len(WSI_object.level_dimensions) - 1  # always the lowest res vis level
         N_classes            = len(np.unique(numerical_labels))
@@ -194,7 +186,7 @@ class PreProcessor:
 
         heatmap, overlay = generate_overlay(WSI_object, numerical_labels + 1, np.array(df_export[["coords_x", "coords_y"]]),
                                             vis_level=vis_level_view,
-                                            patch_size=patch_size, cmap=cmap, alpha=0.4)
+                                            patch_size=self.patch_size, cmap=cmap, alpha=0.4)
 
         # Draw the contours for each label
         heatmap = np.array(heatmap)
@@ -212,10 +204,10 @@ class PreProcessor:
 
         # Export image to QA_path to evaluate the quality of the pre-processing.
         ID = row['id_external']
-        img_pth = Path(self.QA_folder, ID + '_patch_' + str(patch_size[0]) + '.pdf')
+        img_pth = Path(self.QA_folder, ID + '_patch_' + str(self.patch_size[0]) + '.pdf')
         heatmap_PIL.save(str(img_pth), 'pdf')
 
-        print('QA overlay exported at: {}'.format(Path(self.QA_folder, ID + '_patch_' + str(self.patch_size[0]) + '.pdf')))
+        print('QA overlay exported at: {}'.format(Path(self.QA_folder, ID + '_patch_' + str(self.self.patch_size[0]) + '.pdf')))
 
 
     def organise_contours(self,dataset):
@@ -319,7 +311,7 @@ class PreProcessor:
                 xmax, ymax = np.max(coords, axis=0)
                 
                 # To make sure we do not end up with overlapping contours at the end, round xmin, xmax, ymin,
-                # ymax to the nearest multiple of patch_size.
+                # ymax to the nearest multiple of self.patch_size.
                 xmin = int(np.floor(xmin / self.patch_size[0]) * self.patch_size[0])                        
                 ymin = int(np.floor(ymin / self.patch_size[1]) * self.patch_size[1])                        
                 xmax = int(np.ceil(xmax / self.patch_size[0]) * self.patch_size[0])

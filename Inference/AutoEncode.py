@@ -29,28 +29,25 @@ from torch.optim import Adam
 from torch.nn import functional as F
 from torch.nn.functional import softmax
 from pytorch_lightning.callbacks import ModelCheckpoint
-
-from pathlib import Path
+import toml
 
 ## Module - Dataloaders
-from Dataloader.Dataloader import LoadFileParameter, SaveFileParameter, DataGenerator, WSIQuery
+from Dataloader.Dataloader import *
 
 ## Module - Models
 from Model.AutoEncoder import AutoEncoder
 
+config   = toml.load(sys.argv[1])
 seed_everything(42)
 
 
 ##First create a master loader
-
-MasterSheet      = sys.argv[1]
-SVS_Folder       = sys.argv[2]
-Patch_Folder     = sys.argv[3]
-Pretrained_Model = sys.argv[4]
-
-ids                   = WSIQuery(MasterSheet)
-tile_dataset = LoadFileParameter(ids, SVS_Folder, Patch_Folder)
-tile_dataset = tile_dataset[tile_dataset["tumour_label"] == 1]
+SVS_dataset = QueryFromServer(config)
+SynchronizeSVS(config, SVS_dataset)
+DownloadNPY(config, SVS_dataset)
+tile_dataset = LoadFileParameter(config, SVS_dataset)
+tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_tumour'] > 0.85]
+Pretrained_Model = sys.argv[2]
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -64,19 +61,28 @@ invTrans   = transforms.Compose([
     ])
 
 ## Load the previous  model
-trainer = pl.Trainer(gpus=torch.cuda.device_count(), benchmark=True, max_epochs=20, precision=32)
-trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model)
-output_shape = trainer.model.predict(torch.rand((1, n_classes, dim[0], dim[1]))).size()
-print("Inference",output_shape)
-## Now train
-test_dataset = DataLoader(DataGenerator(tile_dataset[:1000], transform = transform, inference = True), batch_size=10, num_workers=0, shuffle=False)
+trainer = pl.Trainer(gpus=torch.cuda.device_count(), precision=config['BASEMODEL']['Precision'], benchmark=True, max_epochs=config['BASEMODEL']['Max_Epochs'])
+trainer.model = AutoEncoder.load_from_checkpoint(Pretrained_Model, config=config)
+
+print(tile_dataset)
+## Now test
+test_dataset = DataLoader(DataGenerator(tile_dataset[:100],
+                                        transform  = transform,
+                                        inference  = True,
+                                        svs_folder = config['DATA']['SVS_Folder']),
+                          batch_size  = config['BASEMODEL']['Batch_Size'],
+                          num_workers = 0,
+                          shuffle     = False)
+
 image_out    = trainer.predict(trainer.model,test_dataset)
-n = 10
+
+batch_size = config['BASEMODEL']['Batch_Size']
 tmp = iter(test_dataset)
+print(len(tmp))
 for j in range(n):
     plt.figure(figsize=(20, 4))
-    image = next(tmp)
-    for i in range(n):
+    batch= next(tmp)
+    for i in range(batch_size):
         img      = invTrans(image[i])
         img_out  = invTrans(image_out[j][i])
         ax = plt.subplot(2, n, i + 1)

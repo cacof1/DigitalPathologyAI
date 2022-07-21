@@ -67,10 +67,9 @@ predicted_classes_prob = predicted_classes_prob[:-n_pad]
 # 5. Save
 
 tissue_names = model.LabelEncoder.inverse_transform(np.arange(predicted_classes_prob.shape[1]))
-
 for tissue_no, tissue_name in enumerate(tissue_names):
-    tile_dataset['prob_' + config['DATA']['Label'] + '_' + tissue_name] = pd.Series(
-        predicted_classes_prob[:, tissue_no], index=tile_dataset.index)
+    
+    tile_dataset['prob_' + config['DATA']['Label'] + '_' + tissue_name] = predicted_classes_prob[:, tissue_no]
     tile_dataset = tile_dataset.fillna(0)
 
 # todo: remove both following lines once the SaveFileParameter below works.
@@ -79,7 +78,7 @@ for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
 
 ########################################################################################################################
 # 6. Send back to OMERO
-
+"""
 conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
 conn.SERVICE_OPTS.setOmeroGroup('-1')
 
@@ -105,3 +104,4 @@ for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
     print('{}.npy uploaded'.format(SVS_ID))
 
 conn.close()
+"""

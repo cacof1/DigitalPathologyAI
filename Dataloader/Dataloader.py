@@ -140,6 +140,7 @@ def QueryFromServer(config, **kwargs):
             params.addString('value' + str(nb), temp)
 
         query   = query_base + query_end
+        print(query)
         result  = conn.getQueryService().projection(query, params, {"omero.group": "-1"})
 
         ## Version 1  -- populate only the criteria
@@ -195,3 +196,4 @@ def DownloadNPY(config, df):
             npy_path = os.path.join(config['DATA']['SVS_Folder'], 'patches')
             os.makedirs(npy_path, exist_ok=True)
             download_annotation(conn.getObject("Image", image['id_omero']), npy_path)
+    conn.close()

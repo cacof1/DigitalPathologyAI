@@ -139,8 +139,7 @@ def download_image(imageid, image_dir, user, host, pw):
     login_cmd = user + "@" + host
     with cli_login(login_cmd, "-w", pw) as cli:
         cli.invoke(["download", f'Image:{imageid}', image_dir])
-
-
+        
 def download_omero_ROIs(config, dataset, download_path=None):
     # Connection to the correct group and identify the correct ID. Use user as target member.
     conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])  ## Group not implemented yet
