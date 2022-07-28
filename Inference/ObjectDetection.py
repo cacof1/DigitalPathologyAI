@@ -19,7 +19,7 @@ import pytorch_lightning as pl
 
 n_gpus = torch.cuda.device_count()
 
-config = toml.load('./Configs/MaskRCNN_Inference_config.ini')
+config = toml.load(sys.argv[1])
 
 SVS_dataset = QueryFromServer(config)
 SynchronizeSVS(config, SVS_dataset)
