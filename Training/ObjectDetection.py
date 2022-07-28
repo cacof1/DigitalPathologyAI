@@ -20,29 +20,11 @@ import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning import Trainer, seed_everything
-from Dataloader.MaskRCNN_Dataset import MFDataModule
-from Model.MaskRCNN_Model import MaskFRCNN
+from Dataloader.ObjectDetection import MFDataModule
+from Model.MaskRCNN import MaskFRCNN
 
-#config = toml.load(sys.argv[1])
+config = toml.load(sys.argv[1])
 n_gpus = torch.cuda.device_count()
-config = toml.load('/home/dgs1/Software/DigitalPathologyAI/Configs/MaskRCNN_config.ini')
-
-def print_config(config_file):
-    df = pd.DataFrame()
-    df['batch_size'] = [config['MODEL']['batch_size']]
-    print('batch_size:{}'.format(config['MODEL']['batch_size']))
-    df['num_of_worker'] = [config['MODEL']['num_of_worker']]
-    print('num_of_worker:{}'.format(config['MODEL']['num_of_worker']))
-    print('max_epochs:{}'.format(config['MODEL']['max_epochs']))
-    print(config['OPTIMIZER'])
-    print(config['SCHEDULER'])
-    print(config['REGULARIZATION'])
-    df['optimizer'] = [config['OPTIMIZER']['algorithm']]
-    df['learning_rate'] = [config['OPTIMIZER']['lr']]
-    df['scheduler'] = [config['SCHEDULER']['type']]
-    #df.to_csv('config_{}.csv'.format(config['MODEL']['base_model']))
-    
-print_config(config)
 
 augmentation = A.Compose([
     A.RandomCrop(width=config['DATA']['dim'][0], height=config['DATA']['dim'][1]),
