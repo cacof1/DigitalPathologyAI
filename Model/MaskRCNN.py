@@ -19,7 +19,7 @@ from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
 from pytorch_lightning.core.lightning import LightningModule
-from Utils.MaskRCNN_Utils import get_coco_api_from_dataset, MetricLogger, CocoEvaluator
+from Utils.ObjectDetectionTools import get_coco_api_from_dataset, MetricLogger, CocoEvaluator
 
 #%%
 class MaskFRCNN(LightningModule):
