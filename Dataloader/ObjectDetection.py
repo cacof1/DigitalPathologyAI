@@ -11,7 +11,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 import numpy as np
 import openslide
 from torchvision.transforms import functional as F
-from Utils.MaskRCNN_Utils import collate_fn
+from Utils.ObjectDetection import collate_fn
 
 import torch
 from torch import nn, Tensor
@@ -131,35 +131,7 @@ class MFDataset(Dataset):
             return img
         else:
             return img, target
-        
-class WSIDataset(Dataset):
-
-    def __init__(self, 
-                 wsi_object,
-                 coords,
-                 normalization,
-                 ):
-
-        self.wsi_object = wsi_object
-        self.coords = coords
-        self.normalization = normalization
-
-    def __len__(self):
-        return self.coords.shape[0]
-
-    def __getitem__(self, i):
-        
-        vis_level = 0
-        dim = (256,256)
-        top_left = tuple(self.coords[i])
-        img = np.array(self.wsi_object.wsi.read_region(top_left, vis_level, dim).convert("RGB"))
-        
-        if self.normalization is not None:
-            img = self.normalization(img)
-             
-        return img
-    
-    
+      
 class MFDataModule(LightningDataModule):
     def __init__(self, 
                  df_train,
