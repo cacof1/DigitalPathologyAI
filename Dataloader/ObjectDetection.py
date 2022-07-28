@@ -11,7 +11,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 import numpy as np
 import openslide
 from torchvision.transforms import functional as F
-from Utils.ObjectDetection import collate_fn
+from Utils.ObjectDetectionTools import collate_fn
 
 import torch
 from torch import nn, Tensor
