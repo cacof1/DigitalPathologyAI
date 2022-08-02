@@ -78,7 +78,6 @@ for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
 
 ########################################################################################################################
 # 6. Send back to OMERO
-"""
 conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
 conn.SERVICE_OPTS.setOmeroGroup('-1')
 
@@ -98,10 +97,8 @@ for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
     for ann in image.listAnnotations():
         if isinstance(ann, omero.gateway.FileAnnotationWrapper): to_delete.append(ann.id)
         conn.deleteObjects('Annotation', to_delete, wait=True)
-    image.linkAnnotation(
-        file_ann)  # link it to dataset.
-
+    if len(to_delete)>0: image.linkAnnotation(file_ann)  # link it to dataset.
+    
     print('{}.npy uploaded'.format(SVS_ID))
-
+    
 conn.close()
-"""
