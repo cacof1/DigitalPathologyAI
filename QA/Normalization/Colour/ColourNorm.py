@@ -2,15 +2,14 @@ import torch.nn as nn
 import torch
 from typing import Union
 import numpy as np
-from matplotlib import pyplot as plt
-
+import spams
 
 # Collection of classes that are instances of nn.Module meant to be used in scriptable
 # transforms (https://pytorch.org/vision/stable/transforms.html#scriptable-transforms).
 # The forward() method of each class is used as the transform.
 
 class Macenko(nn.Module):
-    # Macenko colour normalisation. Takes as an input a torch tensor that goes from 0 to 255
+    # Macenko colour normalisation. Takes as an input a torch tensor (intensity ranging [0,255])
     # of size (C, H, W) and outputs a colour-normalised array of the same size (C, H, W).
     # Inspired by: https://github.com/EIDOSlab/torchstain/blob/main/torchstain/normalizers/torch_macenko_normalizer.py
 
@@ -19,7 +18,7 @@ class Macenko(nn.Module):
     # beta: threshold of normalisation values for analysis.
     # saved_fit_file: (optional) path of tensor with pre-trained parameters HERef and maxCRef.
 
-    def __init__(self, alpha=1, beta=0.15, Io=240, saved_fit_file=None, get_stains=False):
+    def __init__(self, alpha=1, beta=0.15, Io=255, saved_fit_file=None, get_stains=False):
         super(Macenko, self).__init__()
         self.alpha = alpha
         self.beta = beta
@@ -31,7 +30,7 @@ class Macenko(nn.Module):
                                    [0.4062, 0.5581]])
         self.maxCRef = torch.tensor([1.9705, 1.0308])
 
-        if saved_fit_file is not None:  # then you have a pre-fitted dataset!
+        if saved_fit_file is not None:  # then you have a pre-fitted dataset
             temp = torch.load(saved_fit_file)
             self.alpha = temp['alpha']
             self.beta = temp['beta']
@@ -79,8 +78,15 @@ class Macenko(nn.Module):
 
     def find_concentration(self, OD, HE):
 
-        Y = OD.T  # rows correspond to channels (RGB), columns to OD values
-        out = torch.linalg.lstsq(HE, Y)[0]  # determine concentrations of the individual stains
+        # For the record: this is the previous least squares implementation. Unfortunately leads to negative concentrations.
+        # Y = OD.T  # rows correspond to channels (RGB), columns to OD values
+        # out = torch.linalg.lstsq(HE, Y)[0]  # determine concentrations of the individual stains
+
+        # Fast (regularised) non-negative least squares to find concentrations. Operates voxel-wise.
+        out = torch.from_numpy(spams.lasso(X=np.float32(OD.T), D=np.asfortranarray(HE), mode=2, lambda1=1e-4, pos=True).toarray())
+
+        # Slower options tested:
+        # scipy.optimize.nnls, too slow as must loop over each pixel.
 
         return out
 
@@ -92,7 +98,7 @@ class Macenko(nn.Module):
             C = None
             maxC = None
         else:
-            _, eigvecs = torch.linalg.eigh(cov(ODhat.T), UPLO='U')  # or L?
+            _, eigvecs = torch.linalg.eigh(cov(ODhat.T), UPLO='L')
             eigvecs = eigvecs[:, [1, 2]]
             HE = self.find_HE(ODhat, eigvecs)
             C = self.find_concentration(OD, HE)
