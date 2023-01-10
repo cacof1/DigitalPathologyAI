@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Apr 22 12:06:14 2022
-
-@author: zhuoy
-"""
 
 import os 
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
@@ -72,9 +66,9 @@ df_val = df_all[df_all['SVS_ID'].isin(val_idx)]
 #df_val = df_all[df_all['SVS_ID'].isin(config['DATA']['filenames_val'])]
 df_val.reset_index(drop=True, inplace=True)
 
-dm = MFDataModule(df_train,  # .iloc[:50,:],
-                  df_val,  # .iloc[:50,:],
-                  df_test,  # .iloc[:50,:],
+dm = MFDataModule(df_train, 
+                  df_val, 
+                  df_test,  
                   data_source=config['DATA']['data_source'],
                   DataType='MFDataset',
                   wsi_folder=config['DATA']['wsi_folder'],
