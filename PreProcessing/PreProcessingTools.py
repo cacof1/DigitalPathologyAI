@@ -207,7 +207,7 @@ class PreProcessor:
         img_pth = Path(self.QA_folder, ID + '_patch_' + str(self.patch_size[0]) + '.pdf')
         heatmap_PIL.save(str(img_pth), 'pdf')
 
-        print('QA overlay exported at: {}'.format(Path(self.QA_folder, ID + '_patch_' + str(self.self.patch_size[0]) + '.pdf')))
+        print('QA overlay exported at: {}'.format(Path(self.QA_folder, ID + '_patch_' + str(self.patch_size[0]) + '.pdf')))
 
 
     def organise_contours(self,dataset):
@@ -232,8 +232,7 @@ class PreProcessor:
 
             for name in df.Text.unique():
 
-                if all([excluded_contour.lower() not in name.lower() for excluded_contour in
-                        self.config['CONTOURS']['Remove_Contours']]):
+                if all([excluded_contour.lower() not in name.lower() for excluded_contour in self.config['CONTOURS']['Remove_Contours']]):
 
                     if self.config['CONTOURS']['Specific_Contours']:
                         if name in self.config['CONTOURS']['Specific_Contours']:
@@ -303,7 +302,8 @@ class PreProcessor:
         for i in range(len(df)):
             ROI_name = df['Text'][i].lower()
             print('Processing ROI "{}" ({}/{}) of ID "{}": '.format(ROI_name, str(i + 1), str(len(df)), str(row['id_external'])),end='')            
-            if ROI_name not in self.preprocessing_mapping.keys(): print('ROI not within selected contours, skipping.')
+            if ROI_name not in self.preprocessing_mapping.keys():
+                print('ROI not within selected contours, skipping.')
             else:
                 print('Found contours, processing.')
                 coords = split_ROI_points(df['Points'][i]).astype(int)
@@ -312,10 +312,11 @@ class PreProcessor:
                 
                 # To make sure we do not end up with overlapping contours at the end, round xmin, xmax, ymin,
                 # ymax to the nearest multiple of self.patch_size.
-                xmin = int(np.floor(xmin / self.patch_size[0]) * self.patch_size[0])                        
-                ymin = int(np.floor(ymin / self.patch_size[1]) * self.patch_size[1])                        
-                xmax = int(np.ceil(xmax / self.patch_size[0]) * self.patch_size[0])
-                ymax = int(np.ceil(ymax / self.patch_size[1]) * self.patch_size[1])
+                ps = self.patch_size
+                xmin = int(np.floor(xmin / ps[0]) * ps[0])
+                ymin = int(np.floor(ymin / ps[1]) * ps[1])
+                xmax = int(np.ceil(xmax / ps[0]) * ps[0])
+                ymax = int(np.ceil(ymax / ps[1]) * ps[1])
                         
                 # -------------------------------------------------------------------------------------------
                 # Get the list of all contours that are contained within the current one.

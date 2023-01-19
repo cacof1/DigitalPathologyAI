@@ -9,14 +9,17 @@ import torch
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 from sklearn import preprocessing
+import datetime
 
 n_gpus = torch.cuda.device_count()  # could go into config file
 config = toml.load(sys.argv[1])
+# config = toml.load('/home/dgs/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Configs/preprocessing/infer_tumour_convnet_7classes.ini')
+# config = toml.load('/Users/mikael/Dropbox/M/PostDoc/UCL/Code/Python/DigitalPathologyAI/Configs/sarcoma/trainer_sarcoma_convnet_15types.ini')
 
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
-SVS_dataset = QueryFromServer(config)
+SVS_dataset = QueryImageFromCriteria(config)
 SynchronizeSVS(config, SVS_dataset)
 DownloadNPY(config, SVS_dataset)
 print(SVS_dataset)
@@ -32,7 +35,7 @@ tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_tumour'] > 0.85]
 
 # Append the target label to tile_dataset.
 tile_dataset[config['DATA']['Label']] = ''
-for index, row in SVS_dataset.iterrows():
+for _, row in SVS_dataset.iterrows():
     tile_dataset.loc[tile_dataset['SVS_ID'] == row['id_internal'], config['DATA']['Label']] = row[config['DATA']['Label']]
 
 config['DATA']['N_Classes'] = len(tile_dataset[config['DATA']['Label']].unique())
@@ -48,7 +51,7 @@ else:
     logger = TensorBoardLogger('lightning_logs', name=name)
 
 lr_monitor = LearningRateMonitor(logging_interval='step')
-checkpoint_callback = ModelCheckpoint(dirpath=config['CHECKPOINT']['Model_Save_Path'],
+checkpoint_callback = ModelCheckpoint(dirpath=logger.log_dir,
                                       monitor=config['CHECKPOINT']['Monitor'],
                                       filename=name + '-epoch{epoch:02d}-' + config['CHECKPOINT']['Monitor'] + '{' +
                                                config['CHECKPOINT']['Monitor'] + ':.2f}',
@@ -61,8 +64,7 @@ pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
-        ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
-            'NORMALIZATION'] else None,
+        ColourNorm.Macenko(),
         transforms.ToPILImage(),
         transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'],
                                magnitude=config['AUGMENTATION']['Rand_Magnitude']),
@@ -74,33 +76,32 @@ if config['AUGMENTATION']['Rand_Operations'] > 0:
 else:
     train_transform = transforms.Compose([
         transforms.ToTensor(),  # this also normalizes to [0,1].,
-        ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
-            'NORMALIZATION'] else None,
+        ColourNorm.Macenko(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
 # transforms: colour norm only on validation set
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
-    ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
-        'NORMALIZATION'] else None,
+    ColourNorm.Macenko(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
 # Create LabelEncoder
-le = preprocessing.LabelEncoder()
-le.fit(tile_dataset[config['DATA']['Label']])
+label_encoder = preprocessing.LabelEncoder()
+label_encoder.fit(tile_dataset[config['DATA']['Label']])
 
 # Load model and train
+print("N GPUs: ", torch.cuda.device_count())
 trainer = pl.Trainer(gpus=n_gpus,
-                     strategy='ddp',
+                     strategy=pl.strategies.DDPStrategy(timeout=datetime.timedelta(seconds=10800)),
                      benchmark=True,
                      max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
                      precision=config['BASEMODEL']['Precision'],
                      callbacks=[checkpoint_callback, lr_monitor],
                      logger=logger)
 
-model   = ConvNet(config, label_encoder=le)
+model = ConvNet(config, label_encoder=label_encoder)
 
 ########################################################################################################################
 # 4. Dataloader
@@ -111,20 +112,32 @@ data = DataModule(
     train_transform=train_transform,
     val_transform=val_transform,
     train_size=config['DATA']['Train_Size'],
-    val_size=config['DATA']['Val_Size'],
+    test_size=config['DATA']['Test_Size'],
     inference=False,
-    dim_list=config['BASEMODEL']['Patch_Size'],
-    vis_list=config['BASEMODEL']['Vis'],
+    dim=config['BASEMODEL']['Patch_Size'],
+    vis=config['BASEMODEL']['Vis'],
     n_per_sample=config['DATA']['N_Per_Sample'],
     target=config['DATA']['Label'],
     sampling_scheme=config['DATA']['Sampling_Scheme'],
-    svs_folder=config['DATA']['SVS_Folder'],
-    label_encoder=le
+    label_encoder=label_encoder
 )
 # Give the user some insight on the data
 GetInfo.ShowTrainValTestInfo(data, config)
 
+# Set default parameters for loss weights (currently unused)
 config['DATA']['N_Training_Examples'] = data.train_data.__len__()
 config['DATA']['loss_weights'] = torch.ones(int(config['DATA']['N_Classes'])).float()
 
+# Train/validate
 trainer.fit(model, data)
+
+# Test
+trainer.test(model, data.test_dataloader())
+
+# Write config file in logging folder for safekeeping
+with open(logger.log_dir + "/Config.ini", "w+") as toml_file:
+    toml.dump(config, toml_file)
+    toml_file.write("Train transform:\n")
+    toml_file.write(str(train_transform))
+    toml_file.write("Val/Test transform:\n")
+    toml_file.write(str(val_transform))

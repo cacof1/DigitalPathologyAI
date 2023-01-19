@@ -2,154 +2,101 @@ import torch.nn as nn
 import torch
 from typing import Union
 import numpy as np
-import spams
 
-# Collection of classes that are instances of nn.Module meant to be used in scriptable
-# transforms (https://pytorch.org/vision/stable/transforms.html#scriptable-transforms).
-# The forward() method of each class is used as the transform.
 
 class Macenko(nn.Module):
-    # Macenko colour normalisation. Takes as an input a torch tensor (intensity ranging [0,255])
-    # of size (C, H, W) and outputs a colour-normalised array of the same size (C, H, W).
-    # Inspired by: https://github.com/EIDOSlab/torchstain/blob/main/torchstain/normalizers/torch_macenko_normalizer.py
-
-    # INPUTS
+    # Macenko colour normalisation. Takes as input a torch tensor (intensity ranging [0,255])
     # alpha: percentile for normalisation (considers data within alpha and (100-alpha) percentiles).
     # beta: threshold of normalisation values for analysis.
-    # saved_fit_file: (optional) path of tensor with pre-trained parameters HERef and maxCRef.
-
-    def __init__(self, alpha=1, beta=0.15, Io=255, saved_fit_file=None, get_stains=False):
+    # Io: (optional) transmitted light intensity
+    def __init__(self, alpha=1, beta=0.15, Io=255, get_stains=False, normalize=True, HERef=None, maxCRef=None):
         super(Macenko, self).__init__()
         self.alpha = alpha
         self.beta = beta
         self.get_stains = get_stains
         self.Io = Io
-        # Default fit values reported in the original git code (origin unclear)
-        self.HERef = torch.tensor([[0.5626, 0.2159],
-                                   [0.7201, 0.8012],
-                                   [0.4062, 0.5581]])
-        self.maxCRef = torch.tensor([1.9705, 1.0308])
+        self.normalize = normalize
+        # Default fit values are from svs file ID 484813.
 
-        if saved_fit_file is not None:  # then you have a pre-fitted dataset
-            temp = torch.load(saved_fit_file)
-            self.alpha = temp['alpha']
-            self.beta = temp['beta']
-            self.Io = temp['Io']
-            self.HERef = temp['HERef']
-            self.maxCRef = temp['maxCRef']
-
-    def forward(self, img, fit=None):
-        # img should be of size C x H x W.
-
-        if fit is not None:
-            self.fit(img)
-
-        img_norm, H, E = self.normalize(torch.mul(img, 255.0), stains=self.get_stains)
-        img_norm = torch.div(img_norm, 255.0)
-
-        # Following normalization, img_norm will be of shape H x W x C -> return as C x H x W!
-        if self.get_stains:
-            return img_norm.permute(2, 0, 1), H, E
+        if HERef is None:
+            self.HERef = torch.tensor([[0.5571, 0.2586],
+                                       [0.7529, 0.7411],
+                                       [0.3503, 0.6196]])
         else:
-            return img_norm.permute(2, 0, 1)
+            self.HERef = torch.tensor(HERef)
 
-    def convert_rgb2od(self, img):
-        img = img.permute(1, 2, 0)
-        OD = -torch.log((img.reshape((-1, img.shape[-1])).float() + 1) / self.Io)
-        ODhat = OD[~torch.any(OD < self.beta, dim=1)]  # remove transparent pixels
+        if maxCRef is None:
+            self.maxCRef = torch.tensor([1.2955, 0.8696])
+        else:
+            self.maxCRef = torch.tensor(maxCRef)
 
-        return OD, ODhat
+    def forward(self, img, HE=None, maxC=None):  # img has expected size C x H x W
+        c, h, w = img.shape
+        img = img.reshape(img.shape[0], -1)  # Collapse H x W -> N
+        OD, ids = self.convert_rgb2od(img)
 
-    def find_HE(self, ODhat, eigvecs):
-        # project on the plane spanned by the eigenvectors corresponding to the two
-        # largest eigenvalues
-        That = torch.matmul(ODhat, eigvecs)
+        if OD[:, ids].shape[1] <= 10:  # this slide is bad for processing - too many transparent points.
+            img = img.reshape(c, h, w)
+            if self.get_stains:
+                return img, None, None, None, self.HERef
+            else:
+                return img
+
+        C = torch.linalg.lstsq(HE, OD[:, ids])[0]  # determine concentrations of the individual stains
+        if maxC is None:  # otherwise use the input.
+            maxC = torch.stack([percentile(C[0, :], 99), percentile(C[1, :], 99)])
+
+        if (self.normalize): C *= (self.maxCRef / maxC).unsqueeze(-1)  # normalize stain concentrations
+
+        # recreate the image using reference stain vectors
+        img[:, ids] = torch.exp(-torch.matmul(self.HERef, C))
+        img = img.reshape(c, h, w)
+
+        if self.get_stains:
+            H = torch.exp(torch.matmul(-self.HERef[:, 0].unsqueeze(-1), C[0, :].unsqueeze(0)))
+            H = H.T.reshape(c, h, w)
+
+            E = torch.exp(torch.matmul(-self.HERef[:, 1].unsqueeze(-1), C[1, :].unsqueeze(0)))
+            E = E.T.reshape(c, h, w)
+            return img, H, E, self.HE, maxC
+        else:
+            return img
+
+    def convert_rgb2od(self, img):  # img has expected size C x H x W
+        OD = -torch.log(img)
+        ids = torch.logical_not(torch.logical_or(torch.any(OD.isinf(), dim=0), torch.any(OD < self.beta, dim=0)))
+        return OD, ids
+
+    def find_HE(self, img, get_maxC=False):  # img has expected size C x H x W
+        img = img.reshape(img.shape[0], -1)  # Collapse H x W -> N
+
+        OD, ids = self.convert_rgb2od(img)
+        if OD[:, ids].shape[1] <= 10:
+            if (get_maxC):
+                return self.HERef, self.maxCRef  # this slide is bad for processing - too many transparent points.
+            else:
+                return self.HERef
+
+        eigvalues, eigvecs = torch.linalg.eigh(torch.cov(OD[:, ids]), UPLO='L')
+        eigvecs = eigvecs[:, [1, 2]]
+
+        # project on the plane spanned by the eigenvectors corresponding to the two largest eigenvalues
+        That = torch.matmul(OD[:, ids].T, eigvecs)
         phi = torch.atan2(That[:, 1], That[:, 0])
         minPhi = percentile(phi, self.alpha)
         maxPhi = percentile(phi, 100 - self.alpha)
-
         vMin = torch.matmul(eigvecs, torch.stack((torch.cos(minPhi), torch.sin(minPhi)))).unsqueeze(1)
         vMax = torch.matmul(eigvecs, torch.stack((torch.cos(maxPhi), torch.sin(maxPhi)))).unsqueeze(1)
 
         # a heuristic to make the vector corresponding to hematoxylin first and the one corresponding to eosin second
         HE = torch.where(vMin[0] > vMax[0], torch.cat((vMin, vMax), dim=1), torch.cat((vMax, vMin), dim=1))
 
-        return HE
-
-    def find_concentration(self, OD, HE):
-
-        # For the record: this is the previous least squares implementation. Unfortunately leads to negative concentrations.
-        # Y = OD.T  # rows correspond to channels (RGB), columns to OD values
-        # out = torch.linalg.lstsq(HE, Y)[0]  # determine concentrations of the individual stains
-
-        # Fast (regularised) non-negative least squares to find concentrations. Operates voxel-wise.
-        out = torch.from_numpy(spams.lasso(X=np.float32(OD.T), D=np.asfortranarray(HE), mode=2, lambda1=1e-4, pos=True).toarray())
-
-        # Slower options tested:
-        # scipy.optimize.nnls, too slow as must loop over each pixel.
-
-        return out
-
-    def compute_matrices(self, img):
-        OD, ODhat = self.convert_rgb2od(img)
-
-        if ODhat.shape[0] <= 10:  # this slide is bad for processing - too many transparent points.
-            HE = None
-            C = None
-            maxC = None
-        else:
-            _, eigvecs = torch.linalg.eigh(cov(ODhat.T), UPLO='L')
-            eigvecs = eigvecs[:, [1, 2]]
-            HE = self.find_HE(ODhat, eigvecs)
-            C = self.find_concentration(OD, HE)
+        if get_maxC:
+            C = torch.linalg.lstsq(HE, OD[:, ids])[0]  # determine concentrations of the individual stains
             maxC = torch.stack([percentile(C[0, :], 99), percentile(C[1, :], 99)])
-
-        return HE, C, maxC
-
-    def fit(self, img):
-        HE, _, maxC = self.compute_matrices(img)
-        self.HERef = HE
-        self.maxCRef = maxC
-
-    def normalize(self, img, stains=True):
-        # Input:
-        # img: tensor of size C x H x W, 0 to 255 intensity
-        # Io: (optional) transmitted light intensity
-        # alpha: percentile
-        # beta: transparency threshold
-        # stains: if true, returns H&E components
-
-        #Output:
-        # I_norm: colour normalised image, 0 to 255 intensity
-        # H: hematoxylin image
-        # E: eosin image
-
-        c, h, w = img.shape
-        H, E = None, None
-        HE, C, maxC = self.compute_matrices(img)
-
-        if HE is not None:
-
-            C *= (self.maxCRef / maxC).unsqueeze(-1)  # normalize stain concentrations
-
-            # recreate the image using reference mixing matrix
-            Inorm = self.Io * torch.exp(-torch.matmul(self.HERef, C))
-            Inorm[Inorm > 255] = 255
-            Inorm = Inorm.T.reshape(h, w, c).int()
-
-            if stains:
-                H = torch.mul(self.Io, torch.exp(torch.matmul(-self.HERef[:, 0].unsqueeze(-1), C[0, :].unsqueeze(0))))
-                H[H > 255] = 255
-                H = H.T.reshape(h, w, c).int()
-
-                E = torch.mul(self.Io, torch.exp(torch.matmul(-self.HERef[:, 1].unsqueeze(-1), C[1, :].unsqueeze(0))))
-                E[E > 255] = 255
-                E = E.T.reshape(h, w, c).int()
-
-        else:  # then this means the current patch is not good for processing - conserve the same image.
-            Inorm = img.reshape(h, w, c).int()
-
-        return Inorm, H, E
+            return HE, maxC
+        else:
+            return HE
 
 
 def cov(x):
