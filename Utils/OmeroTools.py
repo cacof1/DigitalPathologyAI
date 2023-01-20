@@ -177,8 +177,20 @@ def download_omero_ROIs(config, dataset, download_path=None):
                     fullstr = xmin + ',' + ymin + ' ' + xmax + ',' + ymin + ' ' + xmax + ',' + ymax + \
                         ' ' + xmin + ',' + ymax
                     ROI_points.append(fullstr)
+                elif s.__class__.__name__ == 'EllipseI':
+                    x0 = s.getX().getValue()
+                    y0 = s.getY().getValue()
+                    rx = s.getRadiusX().getValue()
+                    ry = s.getRadiusY().getValue()
+                    theta = np.linspace(-np.pi, np.pi, 30)
+                    xx = x0 + rx * np.cos(theta)
+                    yy = y0 + ry * np.sin(theta)
+                    fullstr=''
+                    for x, y in zip(xx, yy):
+                        fullstr += str(round(x, 1)) + ',' + str(round(y, 1)) + ' '
+                    ROI_points.append(fullstr[:-1])  # to remove final space
                 else:
-                    RuntimeError('Shape " ' + s.__class__.__name__ + '" unsupported yet.')
+                    print('OMERO: Shape " ' + s.__class__.__name__ + '" unsupported yet, skipping...')
                     
                 ROI_type.append('polygon')
                 ROI_name.append(s.getTextValue().getValue())

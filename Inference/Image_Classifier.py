@@ -6,6 +6,7 @@ from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
 from Dataloader.Dataloader import *
 from Utils import MultiGPUTools
+import datetime
 
 n_gpus = torch.cuda.device_count()  # could go into config file
 config = toml.load(sys.argv[1])
@@ -13,7 +14,7 @@ config = toml.load(sys.argv[1])
 ########################################################################################################################
 # 1. Download all relevant files based on the configuration file
 
-SVS_dataset = QueryFromServer(config)
+SVS_dataset = QueryImageFromCriteria(config)
 SynchronizeSVS(config, SVS_dataset)
 DownloadNPY(config, SVS_dataset)
 print(SVS_dataset)
@@ -21,7 +22,7 @@ print(SVS_dataset)
 ########################################################################################################################
 # 2. Pre-processing: create npy files
 
-# Load pre-processed dataset. It should have been pre-processed with Inference/Preprocess.py first.
+# Load pre-processed dataset. It should have been pre-processed (tissue type identification) first.
 tile_dataset = LoadFileParameter(config, SVS_dataset)
 
 # Mask the tile_dataset to only keep the tumour tiles, depending on a pre-set criteria.
@@ -38,19 +39,21 @@ pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
-    ColourNorm.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
-        'NORMALIZATION'] else None,
+    ColourNorm.Macenko(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-data = DataLoader(DataGenerator(tile_dataset, transform=val_transform, svs_folder=config['DATA']['SVS_Folder'], inference=True),
+data = DataLoader(DataGenerator(tile_dataset, transform=val_transform, target=config['DATA']['Label'], inference=True),
                   batch_size=config['BASEMODEL']['Batch_Size'],
-                  num_workers=10,
+                  num_workers=60,
                   persistent_workers=True,
                   shuffle=False,
                   pin_memory=True)
 
-trainer = pl.Trainer(gpus=n_gpus, strategy='ddp', benchmark=True, precision=config['BASEMODEL']['Precision'],
+trainer = pl.Trainer(gpus=n_gpus,
+                     strategy=pl.strategies.DDPStrategy(timeout=datetime.timedelta(seconds=10800)),
+                     benchmark=False,
+                     precision=config['BASEMODEL']['Precision'],
                      callbacks=[pl.callbacks.TQDMProgressBar(refresh_rate=1)])
 
 model = ConvNet.load_from_checkpoint(config['CHECKPOINT']['Model_Save_Path'])
