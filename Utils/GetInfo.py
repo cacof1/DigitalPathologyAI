@@ -20,26 +20,26 @@ def ShowTrainValTestInfo(data, config):
                 print('Your training dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_train, len(data.train_data.tile_dataset[target]), npts_train/len(data.train_data.tile_dataset[target])*100, label))
                 label_counter[label] += npts_train
 
-            fc = data.train_data.tile_dataset.SVS_ID.copy()
+            fc = data.train_data.tile_dataset.id_external.copy()
             print('Distribution of the {} patches from the {} file_ids within the training dataset: '.format(len(fc),len(fc.unique())))
             for f in fc.unique():
-                print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))
-            print('------------------')
+                print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)), end='')
+            print('------------------------------------')
             for label in data.val_data.tile_dataset[target].unique():
                 npts_valid = sum(data.val_data.tile_dataset[target] == label)
                 print('Your validation dataset has {}/{} ({:.2f}%) patches of class {}.'.format(npts_valid, len(data.val_data.tile_dataset[target]), npts_valid/len(data.val_data.tile_dataset[target])*100, label))
                 label_counter[label] += npts_valid
 
-            fc = data.val_data.tile_dataset.SVS_ID.copy()
+            fc = data.val_data.tile_dataset.id_external.copy()
             print('Distribution of the {} patches from the {} file_ids within the validation dataset: '.format(len(fc),len(fc.unique())))
             for f in fc.unique():
-                print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))
-            print('------------------')
+                print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)), end='')
+            print('------------------------------------')
 
             try:
                 for label in data.test_data.tile_dataset[target].unique():
                     print('Your test dataset has {}/{} patches of class {}.'.format(sum(data.test_data.tile_dataset[target] == label), len(data.test_data.tile_dataset[target]), label))
-                fc = data.test_data.tile_dataset.file_id.copy()
+                fc = data.test_data.tile_dataset.id_external.copy()
                 print('Distribution of the {} patches from the {} file_ids within the test dataset: '.format(len(fc),len(fc.unique())))
                 for f in fc.unique():
                     print('{} = {}/{} = {:.2f}%, '.format(f, sum(fc == f), len(fc), 100*sum(fc == f)/len(fc)))
@@ -82,22 +82,14 @@ def format_model_name(config):
         # ----------------------------------------------------------------------------------------------------------------
         # General model parameters block
 
-        dimstr = ''
-        for dim in range(len(config['BASEMODEL']['Patch_Size'])):
-            dimstr = dimstr + str(config['BASEMODEL']['Patch_Size'][dim][0]) + '_'
-
-        visstr = ''
-        for vis in range(len(config['BASEMODEL']['Vis'])):
-            visstr = visstr + str(config['BASEMODEL']['Vis'][dim]) + '_'
-
-        main_block = '_dim' + dimstr +\
-                     'vis' + visstr +\
+        main_block = '_dim' + str(config['BASEMODEL']['Patch_Size']) +\
+                     'vis' + str(config['BASEMODEL']['Vis']) +\
                      'b' + str(config['BASEMODEL']['Batch_Size']) +\
                      '_N' + str(config['DATA']['N_Classes']) +\
                      '_n' + str(config['DATA']['N_Per_Sample']) +\
                      '_epochs' + str(config['ADVANCEDMODEL']['Max_Epochs']) +\
                      '_train' + str(int(100 * config['DATA']['Train_Size'])) +\
-                     '_val' + str(int(100 * config['DATA']['Val_Size'])) +\
+                     '_val' + str(int(100 * (1 - config['DATA']['Train_Size']))) +\
                      '_seed' + str(config['ADVANCEDMODEL']['Random_Seed'])
 
         # ----------------------------------------------------------------------------------------------------------------

@@ -70,19 +70,20 @@ def sample_n_per_sample_per_label_and_equalize(tile_dataset, target=None, n_per_
 
     return tile_dataset_sampled.iloc[X_train], tile_dataset_sampled.iloc[X_test]
 
+
 def sample_N_per_WSI(tile_dataset, n_per_sample=np.Inf):
     # Consider n_per_sample, an integer and n_patches_i, the total number of patches for a WSI of index i
 
     # Simple sampler: randomly sample min(n_per_sample,n_patches_i) patches for each WSI of index i.
     # This is appropriate when you have a single class per WSI, or if the classes are balanced within each WSI.
 
-    value_counts = tile_dataset.SVS_ID.value_counts()
+    value_counts = tile_dataset.SVS_PATH.value_counts()
     fn_for_sampling = value_counts[value_counts > n_per_sample].index
-    df1 = tile_dataset[tile_dataset['SVS_ID'].isin(fn_for_sampling)].groupby("SVS_ID").sample(n=n_per_sample,
-                                                                                              replace=False)
+    df1 = tile_dataset[tile_dataset['SVS_PATH'].isin(fn_for_sampling)].groupby("SVS_PATH").sample(n=n_per_sample,
+                                                                                                  replace=False)
 
     if fn_for_sampling.shape != value_counts.shape:  # if some datasets have less than n_per_sample
-        df2 = tile_dataset[~tile_dataset['SVS_ID'].isin(fn_for_sampling)].groupby("SVS_ID").sample(frac=1)
+        df2 = tile_dataset[~tile_dataset['SVS_PATH'].isin(fn_for_sampling)].groupby("SVS_PATH").sample(frac=1)
         return pd.concat([df1, df2])
     else:
         return df1

@@ -124,7 +124,7 @@ class MaskFRCNN(LightningModule):
 
     def validation_epoch_end(self, outputs):
 
-        losses = sum(outputs)/self.config['MODEL']['num_of_gpus']
+        losses = sum(outputs)/len(self.config['MODEL']['GPU_ID'])
         coco_evaluator = self.evaluate(header='val')
         tensorboard_logs = {}
         for i in range(6):
@@ -150,7 +150,7 @@ class MaskFRCNN(LightningModule):
 
     def test_epoch_end(self, outputs):
 
-        losses = sum(outputs) / self.config['MODEL']['num_of_gpus']
+        losses = sum(outputs) / len(self.config['MODEL']['GPU_ID'])
         coco_evaluator = self.evaluate(header='test')
         tensorboard_logs = {}
         for i in range(6):

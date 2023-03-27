@@ -1,12 +1,12 @@
-from PreProcessing.PreProcessingTools import PreProcessor
 import toml
 import pytorch_lightning as pl
 from torchvision import transforms
 from QA.Normalization.Colour import ColourNorm
 from Model.ConvNet import ConvNet
-from Dataloader.Dataloader import *
 from Utils import MultiGPUTools
-import datetime
+import multiprocessing as mp
+from pathlib import Path
+from Dataloader.Dataloader import *
 
 n_gpus = torch.cuda.device_count()  # could go into config file
 config = toml.load(sys.argv[1])
@@ -23,10 +23,15 @@ print(SVS_dataset)
 # 2. Pre-processing: create npy files
 
 # Load pre-processed dataset. It should have been pre-processed (tissue type identification) first.
+print('Loading file parameters...', end='')
 tile_dataset = LoadFileParameter(config, SVS_dataset)
+tile_dataset_full = tile_dataset.copy()  # keep the full tile_dataset for final saving, but only process the reduced.
+valid_tumour_tiles_index = tile_dataset_full['prob_tissue_type_Tumour'] > 0.94
+tile_dataset = tile_dataset.loc[valid_tumour_tiles_index]
 
-# Mask the tile_dataset to only keep the tumour tiles, depending on a pre-set criteria.
-tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_tumour'] > 0.85]
+# Assign SVS paths based on SVS_dataset (this will change depending on which workstation is running the script).
+tile_dataset['SVS_PATH'] = tile_dataset['id_external'].map(dict(zip(SVS_dataset.id_external, SVS_dataset.SVS_PATH)))
+print('Done.')
 
 ########################################################################################################################
 # 3. Model + dataloader
@@ -39,19 +44,18 @@ pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
-    ColourNorm.Macenko(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
 data = DataLoader(DataGenerator(tile_dataset, transform=val_transform, target=config['DATA']['Label'], inference=True),
                   batch_size=config['BASEMODEL']['Batch_Size'],
-                  num_workers=60,
+                  num_workers=int(.8 * mp.Pool()._processes),
                   persistent_workers=True,
                   shuffle=False,
                   pin_memory=True)
 
 trainer = pl.Trainer(gpus=n_gpus,
-                     strategy=pl.strategies.DDPStrategy(timeout=datetime.timedelta(seconds=10800)),
+                     strategy='ddp',
                      benchmark=False,
                      precision=config['BASEMODEL']['Precision'],
                      callbacks=[pl.callbacks.TQDMProgressBar(refresh_rate=1)])
@@ -73,12 +77,20 @@ predicted_classes_prob = predicted_classes_prob[:-n_pad]
 ########################################################################################################################
 # 5. Save locally (no upload to OMERO for the sarcoma classification yet)
 
+print('Saving sarcoma classification results locally to npy files...')
+
 mesenchymal_tumour_names = model.LabelEncoder.inverse_transform(np.arange(predicted_classes_prob.shape[1]))
 
+# Append tumour type probabilities to tumour tiles.
 for tumour_no, tumour_name in enumerate(mesenchymal_tumour_names):
-    tile_dataset['prob_' + config['DATA']['Label'] + '_' + tumour_name] = pd.Series(predicted_classes_prob[:, tumour_no],
-                                                                                   index=tile_dataset.index)
-    tile_dataset = tile_dataset.fillna(0)
+    curkey = 'prob_' + config['DATA']['Label'] + '_' + tumour_name
+    tile_dataset_full[curkey] = np.nan
+    tile_dataset_full.loc[valid_tumour_tiles_index, curkey] = pd.Series(predicted_classes_prob[:, tumour_no], index=tile_dataset.index)
 
-for SVS_ID, df_split in tile_dataset.groupby(tile_dataset.SVS_ID):
-    SaveFileParameter(config, df_split, SVS_ID)
+for id_external, df_split in tile_dataset_full.groupby(tile_dataset_full.id_external):
+    npy_path = SaveFileParameter(config, df_split, str(id_external))
+    print('File exported at {}.'.format(npy_path))
+
+print('Done.')
+
+###############################################################################################
