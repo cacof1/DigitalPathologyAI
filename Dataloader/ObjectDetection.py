@@ -167,7 +167,8 @@ class MixDataset(Dataset):
 
     def __init__(self,
                  df,
-                 wsi_folder=None,
+
+                 wsi_folder,
                  mask_folder=None,
                  masked_input=True,
                  data_source='nrrd_files',
@@ -225,7 +226,7 @@ class MixDataset(Dataset):
             data, header = nrrd.read(os.path.join(self.nrrd_path, self.df['nrrd_file'][i]), custom_field_map)
             data = data[256:, 256:, :]
             mask = header['mask'][256:, 256:]
-            img = data
+
 
         if self.masked_input:
             mask = mask / np.max(mask)
@@ -270,14 +271,17 @@ class MixDataset(Dataset):
             if self.data_source == 'svs_files':
                 label = torch.as_tensor(self.df['gt_label'][i], dtype=torch.int64)
             elif self.data_source == 'nrrd_files':
-                #label = self.df['ann_label'][i]
-                #label = torch.as_tensor(self.df['ann_label'][i], dtype=torch.int64)
-                if self.df['ann_label'][i] == 'yes':
+
+                label = torch.as_tensor(self.df['ann_label'][i], dtype=torch.int64)
+                '''if self.df['ann_label'][i] == 'yes':
+
                     label = 1
                 elif self.df['ann_label'][i] == 'no':
                     label = 0
 
-            label = torch.as_tensor(label,dtype=torch.uint8)
+
+            label = torch.as_tensor(label,dtype=torch.uint8)'''
+
 
             return data, label
 
@@ -309,8 +313,10 @@ class MFDataModule(LightningDataModule):
 
         if self.DataType == 'MFDataset':
             self.train_data = MFDataset(df_train, augmentation=augmentation, normalization=normalization, inference=inference, **kwargs)
-            self.val_data = MFDataset(df_val, augmentation=None, normalization=normalization, inference=inference, **kwargs)
-            self.test_data = MFDataset(df_test, augmentation=None, normalization=normalization, inference=inference, **kwargs)
+
+            self.val_data = MFDataset(df_val, augmentation=augmentation, normalization=normalization, inference=inference, **kwargs)
+            self.test_data = MFDataset(df_test, augmentation=augmentation, normalization=normalization, inference=inference, **kwargs)
+
 
         elif self.DataType == 'MixDataset':
             self.train_data = MixDataset(df_train,  transform=train_transform, **kwargs)

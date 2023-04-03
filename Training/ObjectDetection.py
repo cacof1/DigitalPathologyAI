@@ -46,8 +46,10 @@ else:
 
 df = pd.read_csv(config['DATA']['dataframe'])
 #df_all = df[df['num_objs'] == 1]
-df = df[df['ann_label'] == 'yes']
-#df = df[df['ann_label'] != '?']
+
+#df = df[df['ann_label'] == 'yes']
+df = df[df['ann_label'] != '?']
+
 
 print(df)
 
