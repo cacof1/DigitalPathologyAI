@@ -1,7 +1,7 @@
 __local/
 .idea/
 Preprocessing/
-*/lightning_logs/
+lightning_logs/
 */__pycache__/
 QA/masks/
 QA/stiches/
@@ -11,7 +11,13 @@ Inference/wsi_core/
 /openslide-python/
 /Configs/preprocessing/
 /Configs/sarcoma/
+/Configs/dgs/
 *.pyc
 *.pyc
 Utils/sarcoma_master.csv
 Utils/mitotic_counts_master.csv
+lightning_logs/
+Configs/dgs/
+QA/Normalization/Colour/muscle_norm/
+QA/Normalization/Colour/ColourNorm_Charles_Jan23.py
+QA/Normalization/Colour/ColourNorm_old.py

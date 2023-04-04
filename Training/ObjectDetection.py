@@ -7,29 +7,34 @@ import pandas as pd
 import random
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
-from QA.Normalization.Colour import ColourNorm
+from QA.Normalization.Colour import ColourNorm_old
 import albumentations as A
-
+from Utils.ObjectDetectionTools import collate_fn
 import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning import Trainer, seed_everything
 from Dataloader.ObjectDetection import MFDataModule
 from Model.MaskRCNN import MaskFRCNN
+from sklearn.model_selection import train_test_split
+
+import resource
+rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
 config = toml.load(sys.argv[1])
-n_gpus = torch.cuda.device_count()
+n_gpus = len(config['MODEL']['GPU_ID'])
 
 augmentation = A.Compose([
     A.RandomCrop(width=config['DATA']['dim'][0], height=config['DATA']['dim'][1]),
     A.HorizontalFlip(p=config['AUGMENTATION']['horizontalflip']),
-    #A.RandomBrightnessContrast(p=config['AUGMENTATION']['randombrightnesscontrast']),
+    A.RandomBrightnessContrast(p=config['AUGMENTATION']['randombrightnesscontrast']),
 ])
 
 if config['QC']['macenko_norm']:
     normalization = T.Compose([
         #T.ToTensor(),  # this also normalizes to [0,1].
-        ColourNorm.Macenko(saved_fit_file=config['QC']['macenko_file']),
+        ColourNorm_old.Macenko(saved_fit_file=config['QC']['macenko_file']),
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
@@ -41,8 +46,10 @@ else:
 
 df = pd.read_csv(config['DATA']['dataframe'])
 #df_all = df[df['num_objs'] == 1]
+
 #df = df[df['ann_label'] == 'yes']
 df = df[df['ann_label'] != '?']
+
 
 print(df)
 
@@ -65,6 +72,7 @@ df_train.reset_index(drop=True, inplace=True)
 df_val = df_all[df_all['SVS_ID'].isin(val_idx)]
 #df_val = df_all[df_all['SVS_ID'].isin(config['DATA']['filenames_val'])]
 df_val.reset_index(drop=True, inplace=True)
+
 
 dm = MFDataModule(df_train, 
                   df_val, 
@@ -96,6 +104,7 @@ print('Training Size: {0}/{3}({4})\nValidating Size: {1}/{3}({5})\nTesting Size:
                                                                                                       df.shape[0],
                                                                                                       ))
 
+
 #%%
 seed_everything(config['MODEL']['random_seed'])
  
@@ -111,20 +120,24 @@ checkpoint_callback = ModelCheckpoint(
     mode=config['CHECKPOINT']['mode'],
 )
 
-logger = TensorBoardLogger(log_path, name=config['MODEL']['saved_model_name'])
+logger = TensorBoardLogger(log_path, name=config['MODEL']['base_model'])
 
-'''trainer = Trainer(gpus=1, 
+trainer = Trainer(accelerator="gpu",
+                  devices=config['MODEL']['GPU_ID'],
+                  benchmark=True,
                   max_epochs=config['MODEL']['max_epochs'],
                   callbacks=[checkpoint_callback],
-                  logger=logger,)'''
+                  logger=logger,)
 
-trainer = Trainer(gpus=n_gpus,
+'''
+trainer = Trainer(accelerator="gpu",
+                  devices=config['MODEL']['GPU_ID'],
                   strategy='ddp_find_unused_parameters_false',
                   benchmark=True,
                   max_epochs=config['MODEL']['max_epochs'],
                   callbacks=[checkpoint_callback],
                   logger=logger,
-                  )
+                  )'''
 
 trainer.fit(model,dm)
 trainer.save_checkpoint(config['MODEL']['saved_model_name'])
