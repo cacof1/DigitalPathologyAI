@@ -46,7 +46,7 @@ class Macenko(nn.Module):
 
         #########################################################################################################################
 
-        HE_test, C, maxC_test = self.compute_matrices(img, HE_test=HE_test, maxC_test=maxC_test)
+        HE_test, C, maxC_test = self.compute_HE_C(img, HE_test=HE_test, maxC_test=maxC_test)
 
 
         if (HE_test is None) or (C is None):
@@ -85,7 +85,7 @@ class Macenko(nn.Module):
 
         return OD, valid_idx
 
-    def compute_matrices(self, img, HE_test=None, maxC_test=None):
+    def compute_HE_C(self, img, HE_test=None, maxC_test=None):
         # This function calculates by default the following, in that order:
         #   (1) The stain vector of the current tile, HE_test.
         #   (2) The concentration of each stain, for each pixel of the tile, C.
@@ -133,7 +133,7 @@ class Macenko(nn.Module):
         return HE
 
     def fit(self, img):
-        HE, _, maxC = self.compute_matrices(img)  # will fit HE, maxC on "img".
+        HE, _, maxC = self.compute_HE_C(img)  # will fit HE, maxC on "img".
         self.HERef = HE
         self.maxCRef = maxC
 

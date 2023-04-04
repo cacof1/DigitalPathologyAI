@@ -104,6 +104,9 @@ def LoadFileParameter(config, dataset):
 
     tile_dataset = pd.concat(tile_dataset, axis=0)
 
+    # Assign SVS paths for each tile.
+    tile_dataset['SVS_PATH'] = tile_dataset['id_external'].map(dict(zip(dataset.id_external, dataset.SVS_PATH)))
+
     return tile_dataset
 
 

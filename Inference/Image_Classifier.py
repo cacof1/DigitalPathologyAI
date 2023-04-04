@@ -29,8 +29,6 @@ tile_dataset_full = tile_dataset.copy()  # keep the full tile_dataset for final 
 valid_tumour_tiles_index = tile_dataset_full['prob_tissue_type_Tumour'] > 0.94
 tile_dataset = tile_dataset.loc[valid_tumour_tiles_index]
 
-# Assign SVS paths based on SVS_dataset (this will change depending on which workstation is running the script).
-tile_dataset['SVS_PATH'] = tile_dataset['id_external'].map(dict(zip(SVS_dataset.id_external, SVS_dataset.SVS_PATH)))
 print('Done.')
 
 ########################################################################################################################

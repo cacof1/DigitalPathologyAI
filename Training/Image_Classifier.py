@@ -31,8 +31,6 @@ print(SVS_dataset)
 print('Loading file parameters...', end='')
 tile_dataset = LoadFileParameter(config, SVS_dataset)
 tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_Tumour'] > 0.94]  # keep only tumour tiles
-# Assign SVS paths based on SVS_dataset (this will change depending on which workstation is running the script).
-tile_dataset['SVS_PATH'] = tile_dataset['id_external'].map(dict(zip(SVS_dataset.id_external, SVS_dataset.SVS_PATH)))
 print('Done.')
 
 # Append the target label to tile_dataset.

@@ -16,3 +16,8 @@ Inference/wsi_core/
 *.pyc
 Utils/sarcoma_master.csv
 Utils/mitotic_counts_master.csv
+lightning_logs/
+Configs/dgs/
+QA/Normalization/Colour/muscle_norm/
+QA/Normalization/Colour/ColourNorm_Charles_Jan23.py
+QA/Normalization/Colour/ColourNorm_old.py
