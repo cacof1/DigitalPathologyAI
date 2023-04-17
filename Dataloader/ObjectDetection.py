@@ -13,7 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 from typing import Tuple, Dict, Optional
 from pytorch_lightning import LightningDataModule
 from sklearn.model_selection import train_test_split
-
+from skimage import morphology as morph
 
 def get_bbox_from_mask(mask):
     pos = np.where(mask == 255)
@@ -105,10 +105,8 @@ class MFDataset(Dataset):
 
             data, header = nrrd.read(os.path.join(self.nrrd_path, self.df['nrrd_file'][i]), custom_field_map)
             img = data[256:, 256:, :]
-            mask = header['mask'][256:, 256:]
-            mask = mask / np.max(mask)
-            masked = np.ma.masked_greater_equal(mask, 0.5)
-            mask = masked.mask.astype(np.uint8)
+            mask = header['mask'][256:, 256:].astype('bool')
+            mask = morph.remove_small_objects(mask, min_size=300)
             mask = np.array(255 * mask)
 
             num_objs = 1
@@ -224,25 +222,19 @@ class MixDataset(Dataset):
                 'mask': 'double matrix'}
 
             data, header = nrrd.read(os.path.join(self.nrrd_path, self.df['nrrd_file'][i]), custom_field_map)
-            data = data[256:, 256:, :]
-            mask = header['mask'][256:, 256:]
-
+            img = data[256:, 256:, :]
+            mask = header['mask'][256:, 256:].astype('bool')
+            mask = morph.remove_small_objects(mask, min_size=300)
+            mask_3d = np.stack((mask, mask, mask), axis=-1)
+            box = get_bbox_from_mask(np.array(255 * mask))
+            center = ([(box[1]+box[3])/2, (box[0]+box[2])/2])
 
         if self.masked_input:
-            mask = mask / np.max(mask)
-            masked = np.ma.masked_where(mask >= 0.5, mask)
-            mask = masked.mask.astype(np.uint8)
-            mask_3d = np.stack((mask, mask, mask), axis=-1)
-            box = get_bbox_from_mask(mask)
-            #print('bbox:{}'.format(box))
-            if len(box) == 0:
-                box = [64,64,128,128]
-
-            center = ([(box[1]+box[3])/2, (box[0]+box[2])/2])
-            #img = data[int(center[0] - 32):int(center[0] + 32), int(center[1] - 32):int(center[1] + 32), :]
-            masked_img = (data * mask_3d)[int(center[0] - 32):int(center[0] + 32), int(center[1] - 32):int(center[1] + 32), :]
+            masked_img = (img * mask_3d)[int(center[0] - 32):int(center[0] + 32), int(center[1] - 32):int(center[1] + 32), :]
             img = np.array(masked_img)
-
+        else:
+            img = img[int(center[0] - 32):int(center[0] + 32), int(center[1] - 32):int(center[1] + 32), :]
+                
         if self.transform: img = self.transform(img)
 
         if self.extract_feature:
@@ -271,17 +263,7 @@ class MixDataset(Dataset):
             if self.data_source == 'svs_files':
                 label = torch.as_tensor(self.df['gt_label'][i], dtype=torch.int64)
             elif self.data_source == 'nrrd_files':
-
                 label = torch.as_tensor(self.df['ann_label'][i], dtype=torch.int64)
-                '''if self.df['ann_label'][i] == 'yes':
-
-                    label = 1
-                elif self.df['ann_label'][i] == 'no':
-                    label = 0
-
-
-            label = torch.as_tensor(label,dtype=torch.uint8)'''
-
 
             return data, label
 
