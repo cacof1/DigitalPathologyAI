@@ -64,7 +64,6 @@ class DataModule(LightningDataModule):
 
         if label_encoder:
             tile_dataset[config['DATA']['Label']] = label_encoder.transform(tile_dataset[config['DATA']['Label']])  # For classif only
-        #tile_dataset['id_external'] = tile_dataset['id_external'].apply(str)
         
         ## Sampling
         if config['DATA']['N_Per_Sample'] is None or config['DATA']['N_Per_Sample'] == float("inf"):
