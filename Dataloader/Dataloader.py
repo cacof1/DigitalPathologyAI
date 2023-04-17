@@ -76,8 +76,7 @@ class DataModule(LightningDataModule):
                 .apply(lambda group: group.sample(min(config['DATA']['N_Per_Sample'], len(group)), replace=False))
                 .reset_index(drop=True)
                 )
-        
-        print(tile_dataset_sampled)
+       
         svi = np.unique(tile_dataset_sampled.SVS_PATH)
         np.random.shuffle(svi)
 
