@@ -116,11 +116,6 @@ def format_model_name(config):
                     '_LS' + str(config['REGULARIZATION']['Label_Smoothing'])
 
         # ----------------------------------------------------------------------------------------------------------------
-        # Data Augment block (all methods)
-        DA_block = '_RandAugment_n' + str(config['AUGMENTATION']['Rand_Operations']) +\
-                   '_M' + str(config['AUGMENTATION']['Rand_Magnitude'])
-
-        # ----------------------------------------------------------------------------------------------------------------
         # quality control (QC) block (all methods)
         QC_block = ''
         if 'Colour_Norm_File' in config['NORMALIZATION']:
@@ -132,7 +127,7 @@ def format_model_name(config):
 
         # Append final information
         name = config['BASEMODEL']['Model'] + model_block + main_block + optim_block + sched_block + reg_block +\
-            QC_block + DA_block + time_block
+            QC_block +  time_block
 
 
         if config['VERBOSE']['Data_Info']:

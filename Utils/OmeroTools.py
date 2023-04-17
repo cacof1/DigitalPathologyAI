@@ -33,7 +33,7 @@ def connect(hostname, username, password, **kwargs):
     :param password: Password
     :return: Connected BlitzGateway
     """
-    conn = BlitzGateway(username, password, host=hostname, secure=True, **kwargs)
+    conn = BlitzGateway(username, password, host=hostname)
     conn.connect()
     conn.SERVICE_OPTS.setOmeroGroup('-1')
     conn.c.enableKeepAlive(60)

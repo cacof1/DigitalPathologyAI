@@ -1,90 +1,101 @@
-from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split, GroupShuffleSplit
-from sklearn import preprocessing
-import openslide
-import torch
-from collections import Counter
-import itertools
-import Utils.sampling_schemes as sampling_schemes
-from Utils.OmeroTools import *
-from Utils import npyExportTools
+from typing import Dict, Any
 from pathlib import Path
+import itertools
 import multiprocessing as mp
-from QA.Normalization.Colour import ColourNorm
+import numpy as np
+import pandas as pd
+import torch
+import omero
+import os
+from collections import Counter
+from sklearn.model_selection import train_test_split
+from torch.utils.data import IterableDataset,DataLoader
+from pytorch_lightning import LightningDataModule
+import openslide
+import Utils.sampling_schemes as sampling_schemes
+from Utils.OmeroTools import connect, download_image, download_annotation
 
+import matplotlib.pyplot as plt
 
-class DataGenerator(torch.utils.data.Dataset):
+class DataGenerator(IterableDataset):
 
-    def __init__(self, tile_dataset, target="tumour_label", dim=(256, 256), vis=0, inference=False,
-                 transform=None, target_transform=None, svs_folder=None):
+    def __init__(self, tile_dataset, config=None,  transform=None, target_transform=None):
 
         super().__init__()
-        self.transform = transform
+        self.transform        = transform
         self.target_transform = target_transform
-        self.tile_dataset = tile_dataset
-        self.vis       = vis
-        self.dim       = dim
-        self.inference = inference
-        self.target = target
-        self.svs_folder = svs_folder
+        self.tile_dataset     = tile_dataset
+        self.vis_list         = config['BASEMODEL']['Vis']
+        self.patch_size       = config['BASEMODEL']['Patch_Size']
+        self.inference        = config['ADVANCEDMODEL']['Inference']
+        self.target           = config['DATA']['Label']
 
-    def __len__(self):
-        return int(self.tile_dataset.shape[0])
+    def __iter__(self):
+        for svs_path, svs_group in self.tile_dataset.groupby('SVS_PATH'):
+            with openslide.open_slide(svs_path) as slide:
+                for idx, row in svs_group.iterrows():
+                    x, y, label = row['coords_x'], row['coords_y'], row[self.target]
+                    patches = {}
+                    for level in self.vis_list:
+                        downsample = int(slide.level_downsamples[level])
+                        half_patch_size_X = self.patch_size[0]*downsample // 2
+                        half_patch_size_Y = self.patch_size[1]*downsample // 2
+                        x_start = x - half_patch_size_X
+                        y_start = y - half_patch_size_Y
+                        patch   = slide.read_region((x_start, y_start), level, self.patch_size).convert('RGB')
+                        if self.transform:
+                            patch = self.transform(patch)
+                            
+                        patches[f"{level}"] = patch
 
-    def __getitem__(self, id):
-        # load image
-        svs_path = self.tile_dataset['SVS_PATH'].iloc[id]
-        svs_file = openslide.open_slide(svs_path)
-        data = svs_file.read_region([self.tile_dataset["coords_x"].iloc[id], self.tile_dataset["coords_y"].iloc[id]], self.vis, self.dim).convert("RGB")
-
-        # Transform - Data Augmentation
-        if self.transform:
-            data = self.transform(data)
-
-        if self.inference:
-            return data
-        else:
-            label = self.tile_dataset[self.target].iloc[id]
-            if self.target_transform:
-                label = self.target_transform(label)
-
-            return data, label
-
+                    if self.inference:
+                        return patches
+                    else:
+                        if self.target_transform:
+                            label = self.target_transform(label)                        
+                        yield patches, label
 
 class DataModule(LightningDataModule):
-
-    def __init__(self, tile_dataset, train_transform=None, val_transform=None, batch_size=8, n_per_sample=np.Inf,
-                 test_size=0.15, val_size=0.15, target=None,
-                 label_encoder=None, **kwargs):
+    def __init__(self, tile_dataset, train_transform=None, val_transform=None, config = None, label_encoder=None, **kwargs):
         super().__init__()
 
-        self.batch_size = batch_size
-        self.num_workers = int(.8 * mp.Pool()._processes)  # number of workers for dataloader is 80% of maximum workers.
+        self.batch_size  = config['BASEMODEL']['Batch_Size']        
+        self.num_workers = 1#int(.8 * mp.Pool()._processes)  # number of workers for dataloader is 80% of maximum workers.
 
         if label_encoder:
-            tile_dataset[target] = label_encoder.transform(tile_dataset[target])  # For classif only
-
-        tile_dataset['id_external'] = tile_dataset['id_external'].apply(str)
-
-        tile_dataset_sampled = sampling_schemes.sample_N_per_WSI(tile_dataset, n_per_sample=n_per_sample)
+            tile_dataset[config['DATA']['Label']] = label_encoder.transform(tile_dataset[config['DATA']['Label']])  # For classif only
+        #tile_dataset['id_external'] = tile_dataset['id_external'].apply(str)
+        
+        ## Sampling
+        if config['DATA']['N_Per_Sample'] is None or config['DATA']['N_Per_Sample'] == float("inf"):
+            tile_dataset_sampled = tile_dataset.groupby('SVS_PATH').sample(frac=1)
+                
+        else:
+            tile_dataset_sampled = (
+                tile_dataset
+                .groupby('SVS_PATH')
+                .apply(lambda group: group.sample(min(config['DATA']['N_Per_Sample'], len(group)), replace=False))
+                .reset_index(drop=True)
+                )
+        
+        print(tile_dataset_sampled)
         svi = np.unique(tile_dataset_sampled.SVS_PATH)
         np.random.shuffle(svi)
 
         # Split in train/val/test so that final proportions are train_size/val_size/test_size
-        train_val_idx, test_idx = train_test_split(svi, test_size=test_size)
-        train_idx, val_idx = train_test_split(train_val_idx, test_size=val_size/(1-test_size))
+        train_val_idx, test_idx = train_test_split(svi, test_size=config['DATA']['Test_Size'])
+        train_idx, val_idx      = train_test_split(train_val_idx, test_size=config['DATA']['Val_Size']/(1-config['DATA']['Test_Size']))
 
         tile_dataset_train = tile_dataset_sampled[tile_dataset_sampled.SVS_PATH.isin(train_idx)]
-        tile_dataset_val = tile_dataset_sampled[tile_dataset_sampled.SVS_PATH.isin(val_idx)]
-        tile_dataset_test = tile_dataset_sampled[tile_dataset_sampled.SVS_PATH.isin(test_idx)]
+        tile_dataset_val   = tile_dataset_sampled[tile_dataset_sampled.SVS_PATH.isin(val_idx)]
+        tile_dataset_test  = tile_dataset_sampled[tile_dataset_sampled.SVS_PATH.isin(test_idx)]
 
-        self.train_data = DataGenerator(tile_dataset_train, transform=train_transform, target=target, **kwargs)
-        self.val_data   = DataGenerator(tile_dataset_val, transform=val_transform, target=target, **kwargs)
-        self.test_data  = DataGenerator(tile_dataset_test, transform=val_transform, target=target, **kwargs)
+        self.train_data = DataGenerator(tile_dataset_train, config=config, transform=train_transform, **kwargs)
+        self.val_data   = DataGenerator(tile_dataset_val,   config=config, transform=val_transform, **kwargs)
+        self.test_data  = DataGenerator(tile_dataset_test,  config=config, transform=val_transform, **kwargs)
 
     def train_dataloader(self):
-        return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, shuffle=True)
+        return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
 
     def val_dataloader(self):
         return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
@@ -93,115 +104,120 @@ class DataModule(LightningDataModule):
         return DataLoader(self.test_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
 
 
-def LoadFileParameter(config, dataset):
+def LoadFileParameter(config: dict, SVS_dataset: pd.DataFrame) -> pd.DataFrame:
 
-    cur_basemodel_str = npyExportTools.basemodel_to_str(config)
-    tile_dataset = []
+    cur_basemodel_str = '_'.join(f"{key}_{config['BASEMODEL'][key]}" for key in ['Patch_Size', 'Vis'])
+    tile_dataframe = []
 
-    for npy_path in dataset.NPY_PATH:
-        header, existing_df = np.load(npy_path, allow_pickle=True).item()[cur_basemodel_str]
-        tile_dataset.append(existing_df)
+    for npy_path, svs_path in zip(SVS_dataset.NPY_PATH,SVS_dataset.SVS_PATH):
 
-    tile_dataset = pd.concat(tile_dataset, axis=0)
-
-    # Assign SVS paths for each tile.
-    tile_dataset['SVS_PATH'] = tile_dataset['id_external'].map(dict(zip(dataset.id_external, dataset.SVS_PATH)))
-
+        key =  next(iter(np.load(npy_path, allow_pickle=True).item()))
+        _, existing_df = np.load(npy_path, allow_pickle=True).item()[key]        ## Temporary because naming in npy arent uniform
+        #_, existing_df = np.load(npy_path, allow_pickle=True).item()[cur_basemodel_str]
+        tile_dataframe.append(existing_df)
+        
+    tile_dataset = pd.concat(tile_dataframe, axis=0)
     return tile_dataset
 
+def SaveFileParameter(config: dict, df: pd.DataFrame, SVS_ID: str) -> str:
+    cur_basemodel_str = '_'.join(f"{key}_{config['BASEMODEL'][key]}" for key in ['Patch_Size', 'Vis'])
+    npy_path = Path(config['DATA']['SVS_Folder'], 'patches', f"{SVS_ID}.npy")
+    npy_path.parent.mkdir(parents=True, exist_ok=True)
 
-def SaveFileParameter(config, df, SVS_ID):
-    cur_basemodel_str = npyExportTools.basemodel_to_str(config)
-    npy_path = os.path.join(config['DATA']['SVS_Folder'], 'patches', SVS_ID + ".npy")
-    os.makedirs(os.path.split(npy_path)[0], exist_ok=True)  # in case folder is non-existent
-    npy_dict = np.load(npy_path, allow_pickle=True).item() if os.path.exists(npy_path) else {}
+    npy_dict = np.load(npy_path, allow_pickle=True).item() if npy_path.exists() else {}
     npy_dict[cur_basemodel_str] = [config, df]
     np.save(npy_path, npy_dict)
-    return npy_path
+    return str(npy_path)
 
-
-def QueryImageFromCriteria(config, **kwargs):
+def QueryImageFromCriteria(config: dict, **kwargs) -> pd.DataFrame:
     print("Querying from Server")
     df = pd.DataFrame()
-    conn = connect(config['OMERO']['Host'], config['OMERO']['User'],
-                   config['OMERO']['Pw'])  ## Group not implemented yet
-    conn.SERVICE_OPTS.setOmeroGroup('-1')
+    with connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw']) as conn:
+        conn.SERVICE_OPTS.setOmeroGroup('-1')
+        keys = list(config['CRITERIA'].keys())
+        value_iter = itertools.product(*config['CRITERIA'].values())  ## Create a joint list with all elements
+        for value in value_iter:
+            query_base = """
+            select image.id, image.name, f2.size, a from
+            ImageAnnotationLink ial
+            join ial.child a
+            join ial.parent image
+            left outer join image.pixels p
+            left outer join image.fileset as fs
+            left outer join fs.usedFiles as uf
+            left outer join uf.originalFile as f2
+            """
+            query_end = ""
+            params = omero.sys.ParametersI()
+            for nb, temp in enumerate(value):
+                query_base += "join a.mapValue mv" + str(nb) + " \n        "
+                if nb == 0:
+                    query_end += "where (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
+                        nb) + ".value = :value" + str(nb) + ")"
+                else:
+                    query_end += " and (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
+                        nb) + ".value = :value" + str(nb) + ")"
+                params.addString('key' + str(nb), keys[nb])
+                params.addString('value' + str(nb), temp)
 
-    keys = list(config['CRITERIA'].keys())
-    value_iter = itertools.product(*config['CRITERIA'].values())  ## Create a joint list with all elements
-    for value in value_iter:
-        query_base = """
-        select image.id, image.name, f2.size, a from
-        ImageAnnotationLink ial
-        join ial.child a
-        join ial.parent image
-        left outer join image.pixels p
-        left outer join image.fileset as fs
-        left outer join fs.usedFiles as uf
-        left outer join uf.originalFile as f2
-        """
-        query_end = ""
-        params = omero.sys.ParametersI()
-        for nb, temp in enumerate(value):
-            query_base += "join a.mapValue mv" + str(nb) + " \n        "
-            if nb == 0:
-                query_end += "where (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
-                    nb) + ".value = :value" + str(nb) + ")"
-            else:
-                query_end += " and (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
-                    nb) + ".value = :value" + str(nb) + ")"
-            params.addString('key' + str(nb), keys[nb])
-            params.addString('value' + str(nb), temp)
+            query = query_base + query_end
+            result = conn.getQueryService().projection(query, params, {"omero.group": "-1"})            
+            df_criteria = pd.DataFrame()
+            if len(result) > 0:
+                for row in result:  ## Transform the results into a panda dataframe for each found match
+                    temp = pd.DataFrame(
+                        [[row[0].val, Path(row[1].val).stem, row[2].val, *row[3].val.getMapValueAsMap().values()]],
+                        columns=["id_omero", "id_external", "Size", *row[3].val.getMapValueAsMap().keys()])
+                    df_criteria = pd.concat([df_criteria, temp])
 
-        query = query_base + query_end
-        result = conn.getQueryService().projection(query, params, {"omero.group": "-1"})
-
-        df_criteria = pd.DataFrame()
-        if len(result) > 0:
-            for row in result:  ## Transform the results into a panda dataframe for each found match
-                temp = pd.DataFrame(
-                    [[row[0].val, Path(row[1].val).stem, row[2].val, *row[3].val.getMapValueAsMap().values()]],
-                    columns=["id_omero", "id_external", "Size", *row[3].val.getMapValueAsMap().keys()])
-                df_criteria = pd.concat([df_criteria, temp])
-
-            df_criteria['SVS_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], image_id + '.svs') for image_id in
-                                       df_criteria['id_external']]
-            df_criteria['NPY_PATH'] = [os.path.join(config['DATA']['SVS_Folder'], 'patches', image_id + '.npy') for image_id
-                                       in df_criteria['id_external']]
-
-            df = pd.concat([df, df_criteria])
-
-    conn.close()
+                svs_folder = Path(config['DATA']['SVS_Folder'])
+                patches_folder = svs_folder / 'patches'
+                df_criteria['SVS_PATH'] = [(svs_folder / (image_id + '.svs')).as_posix() for image_id in df_criteria['id_external']]
+                df_criteria['NPY_PATH'] = [(patches_folder / (image_id + '.npy')).as_posix() for image_id in df_criteria['id_external']]
+                df = pd.concat([df, df_criteria])
     return df
 
-def SynchronizeSVS(config, df):
-
+def SynchronizeSVS(config: dict, df: pd.DataFrame) -> None:
     conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
     conn.SERVICE_OPTS.setOmeroGroup('-1')
 
     for index, image in df.iterrows():
         filepath = image['SVS_PATH']
-        if os.path.exists(filepath):  # Exist
-            if not os.path.getsize(filepath) == image['Size']:  # Corrupted
-                print("SVS file size does not match - redownloading...")
-
+        remote_size = image['Size']
+        
+        if os.path.exists(filepath):  # Exists
+            local_size = os.path.getsize(filepath)
+            
+            if local_size != remote_size:  # Corrupted
+                print(f"SVS file size for {filepath} does not match (local: {local_size}, remote: {remote_size}) - redownloading...")
                 os.remove(filepath)
-                download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
-
+                try:
+                    download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
+                except Exception as e:
+                    print(f"Error downloading image {filepath}: {e}")
         else:  # Doesn't exist
-            print("SVS file does not exist - downloading...")
-            download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
+            print(f"SVS file {filepath} does not exist - downloading...")
+            try:
+                download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'], config['OMERO']['Host'], config['OMERO']['Pw'])
+            except Exception as e:
+                print(f"Error downloading image {filepath}: {e}")
 
     conn.close()
 
+def SynchronizeNPY(config: Dict[str, Any], df: pd.DataFrame) -> None:
+    with connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw']) as conn:
+        conn.SERVICE_OPTS.setOmeroGroup('-1')
 
-def DownloadNPY(config, df):
-    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
-    conn.SERVICE_OPTS.setOmeroGroup('-1')
+        for index, image in df.iterrows():
+            npy_path = image['NPY_PATH']
 
-    for index, image in df.iterrows():
-        if not os.path.exists(image['NPY_PATH']):  # Doesn't exist
-            npy_path = os.path.join(config['DATA']['SVS_Folder'], 'patches')
-            os.makedirs(npy_path, exist_ok=True)
-            download_annotation(conn.getObject("Image", image['id_omero']), npy_path)
-    conn.close()
+            if not os.path.exists(npy_path):  # Doesn't exist
+                npy_directory = os.path.join(config['DATA']['SVS_Folder'], 'patches')
+                os.makedirs(npy_directory, exist_ok=True)
+
+                print(f"NPY file {npy_path} does not exist - downloading...")
+
+                try:
+                    download_annotation(conn.getObject("Image", image['id_omero']), npy_directory)
+                except Exception as e:
+                    print(f"Error downloading NPY file {npy_path}: {e}")
