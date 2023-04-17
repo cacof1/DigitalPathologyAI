@@ -60,7 +60,7 @@ class DataModule(LightningDataModule):
         super().__init__()
 
         self.batch_size  = config['BASEMODEL']['Batch_Size']        
-        self.num_workers = 1#int(.8 * mp.Pool()._processes)  # number of workers for dataloader is 80% of maximum workers.
+        self.num_workers = int(.8 * mp.Pool()._processes)  # number of workers for dataloader is 80% of maximum workers.
 
         if label_encoder:
             tile_dataset[config['DATA']['Label']] = label_encoder.transform(tile_dataset[config['DATA']['Label']])  # For classif only
