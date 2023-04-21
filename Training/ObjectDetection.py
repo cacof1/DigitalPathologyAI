@@ -7,7 +7,7 @@ import pandas as pd
 import random
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
-from QA.Normalization.Colour import ColourNorm_old
+#from QA.Normalization.Colour import ColourNorm_old
 import albumentations as A
 from Utils.ObjectDetectionTools import collate_fn
 import torch
@@ -18,11 +18,8 @@ from Dataloader.ObjectDetection import MFDataModule
 from Model.MaskRCNN import MaskFRCNN
 from sklearn.model_selection import train_test_split
 
-import resource
-rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
-config = toml.load(sys.argv[1])
+config = toml.load('/home/dgs2/Software/DigitalPathologyAI/Configs/MaskRCNN_config.ini')
 n_gpus = len(config['MODEL']['GPU_ID'])
 
 augmentation = A.Compose([
@@ -31,18 +28,18 @@ augmentation = A.Compose([
     A.RandomBrightnessContrast(p=config['AUGMENTATION']['randombrightnesscontrast']),
 ])
 
-if config['QC']['macenko_norm']:
+'''if config['QC']['macenko_norm']:
     normalization = T.Compose([
         #T.ToTensor(),  # this also normalizes to [0,1].
         ColourNorm_old.Macenko(saved_fit_file=config['QC']['macenko_file']),
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-else:
-    normalization = T.Compose([
-        T.ToTensor(),
-        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        ])
+else:'''
+normalization = T.Compose([
+    #T.ToTensor(),
+    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
 
 df = pd.read_csv(config['DATA']['dataframe'])
 #df_all = df[df['num_objs'] == 1]

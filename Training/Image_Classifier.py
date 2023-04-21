@@ -4,12 +4,12 @@ import datetime
 import torch
 from torch import cuda
 from torchvision import transforms
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-import pytorch_lightning as pl
+from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
+import lightning as L
 import toml
 from sklearn import preprocessing
-
+from lightning.pytorch.strategies import DDPStrategy
 from Dataloader.Dataloader import (
     DataModule,
     QueryImageFromCriteria,
@@ -20,13 +20,13 @@ from Dataloader.Dataloader import (
 from Utils import GetInfo
 from Model.ConvNet import ConvNet
 from QA.Normalization.Colour import ColourAugment
-
+import datetime
 def load_config(config_file):
     return toml.load(config_file)
 
 def get_tile_dataset(config):
     SVS_dataset = QueryImageFromCriteria(config)
-    SVS_dataset = SVS_dataset.groupby('diagnosis').head(n=5)
+    #SVS_dataset = SVS_dataset.groupby('diagnosis').head(n=5)
     SynchronizeSVS(config, SVS_dataset)    
     SynchronizeNPY(config, SVS_dataset)
     tile_dataset = LoadFileParameter(config, SVS_dataset)
@@ -36,14 +36,14 @@ def get_tile_dataset(config):
     return tile_dataset
 
 def get_logger(config, model_name):
-    logger_folder = config['CHECKPOINT'].get('logger_folder')
+    logger_folder = config['CHECKPOINT']['logger_folder']
     return TensorBoardLogger('lightning_logs', name=model_name, sub_dir=logger_folder)
 
 def get_callbacks(config):
     lr_monitor = LearningRateMonitor(logging_interval='step')
     checkpoint_callback = ModelCheckpoint(
         monitor=config['CHECKPOINT']['Monitor'],
-        filename=f"{{model_name}}-epoch{{epoch:02d}}-{config['CHECKPOINT']['Monitor']}{{config['CHECKPOINT']['Monitor']:.2f}}",
+        filename=f"{{model_name}}-epoch{{epoch:02d}}",
         save_top_k=1,
         mode=config['CHECKPOINT']['Mode'])
 
@@ -68,35 +68,38 @@ def get_transforms(config):
     return train_transform, val_transform
 
 def main(config_file):
-    n_gpus = cuda.device_count()
+    n_gpus = 1#cuda.device_count()
     config = load_config(config_file)
     print(f"{n_gpus} GPUs are used for training")
 
     tile_dataset = get_tile_dataset(config)
     config['DATA']['N_Classes'] = len(tile_dataset[config['DATA']['Label']].unique())
-    print(f"There are {config['DATA']['N_Classes']} classes in the training dataset.")
-    print(tile_dataset.value_counts(subset=config['DATA']['Label']))
+    #print(f"There are {config['DATA']['N_Classes']} classes in the training dataset.")
+    #print(tile_dataset.value_counts(subset=config['DATA']['Label']))
 
     model_name = GetInfo.format_model_name(config)
     logger     = get_logger(config, model_name)
     callbacks  = get_callbacks(config)
 
-    pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
-
+    L.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
+    torch.set_float32_matmul_precision('medium')
+    
     train_transform, val_transform = get_transforms(config)
     label_encoder = preprocessing.LabelEncoder()
     label_encoder.fit(tile_dataset[config['DATA']['Label']])
-
-    trainer = pl.Trainer(gpus=n_gpus,
-                         strategy='ddp',
-                         benchmark=False,
-                         max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
-                         precision=config['BASEMODEL']['Precision'],
-                         callbacks=callbacks,
-                         logger=logger)
+    ddp = DDPStrategy(timeout=datetime.timedelta(seconds=7200))
+    trainer = L.Trainer(devices=n_gpus,
+                        accelerator="gpu",
+                        #strategy=ddp,
+                        benchmark=False,
+                        max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
+                        precision=config['BASEMODEL']['Precision'],
+                        callbacks=callbacks,
+                        logger=logger)
 
     model = ConvNet(config, label_encoder=label_encoder)
-
+    #compiled_model = torch.compile(model)
+    
     data = DataModule(
         tile_dataset,
         train_transform=train_transform,

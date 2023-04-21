@@ -16,7 +16,7 @@ from sklearn.model_selection import train_test_split
 from skimage import morphology as morph
 
 def get_bbox_from_mask(mask):
-    pos = np.where(mask == 255)
+    pos = np.where(mask==255)
     if pos[0].shape[0] == 0:
         return np.zeros((0, 4))
     else:
@@ -106,7 +106,7 @@ class MFDataset(Dataset):
             data, header = nrrd.read(os.path.join(self.nrrd_path, self.df['nrrd_file'][i]), custom_field_map)
             img = data[256:, 256:, :]
             mask = header['mask'][256:, 256:].astype('bool')
-            mask = morph.remove_small_objects(mask, min_size=300)
+            #mask = morph.remove_small_objects(mask, min_size=300)
             mask = np.array(255 * mask)
 
             num_objs = 1

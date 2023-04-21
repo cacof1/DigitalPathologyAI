@@ -68,14 +68,10 @@ def format_model_name(config):
                          '_subP' + str(config['DATA']['Sub_Patch_Size'])
 
         elif config['BASEMODEL']['Model'].lower() == 'convnet':
-            pre = '_pre' if config['ADVANCEDMODEL']['Pretrained'] is True else ''
-            model_block = '_' + config['BASEMODEL']['Backbone'] + pre +\
-                         '_drop' + str(config['ADVANCEDMODEL']['Drop_Rate'])
+            model_block = '_' + config['BASEMODEL']['Backbone'] + '_drop' + str(config['ADVANCEDMODEL']['Drop_Rate'])
 
         elif config['BASEMODEL']['Model'].lower() == 'convnext':
-            pre = 'pre' if config['ADVANCEDMODEL']['Pretrained'] is True else ''
-            model_block = '_' + pre +\
-                          '_drop' + str(config['ADVANCEDMODEL']['Drop_Rate']) +\
+            model_block = '_' + '_drop' + str(config['ADVANCEDMODEL']['Drop_Rate']) +\
                          '_LS' + str(config['ADVANCEDMODEL']['Layer_Scale']) +\
                          '_SD' + str(config['REGULARIZATION']['Stoch_Depth'])
 

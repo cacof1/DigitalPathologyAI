@@ -13,7 +13,6 @@ import numpy as np
 
 import torch
 import torch.utils.data
-import torch._six
 import torchvision
 
 from pycocotools import mask as coco_mask
