@@ -29,12 +29,7 @@ class ConvNet(L.LightningModule):
             self.loss_fcn = torch.nn.CrossEntropyLoss(label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
 
         self.activation = getattr(torch.nn, self.config["BASEMODEL"]["Activation"])()
-               
 
-        # Initialize the models for each zoom level
-        ##self.backbone = getattr(models, config['BASEMODEL']['Backbone'])
-        #self.backbone = self.backbone(weights='DEFAULT', drop_rate=config['ADVANCEDMODEL']['Drop_Rate'])
-        #out_feats = list(self.backbone.children())[-1].out_features        
         self.models = []
         for zoom_level in range(len(self.config['BASEMODEL']['Vis'])):
             backbone = getattr(models, config['BASEMODEL']['Backbone'])

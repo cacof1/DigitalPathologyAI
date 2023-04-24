@@ -92,7 +92,6 @@ class DataGenerator(torch.utils.data.Dataset):
         svs_path = self.tile_dataset['SVS_PATH'].iloc[id]
         patches = torch.empty((len(self.vis_list), 3, *self.patch_size))
         wsi_obj = self.wsi_reader.read(svs_path)
-        #wsi_obj = self._get_wsi_object(svs_path)
         for level in self.vis_list:
             
             downsample = self.wsi_reader.get_downsample_ratio(wsi_obj,level)            
@@ -101,10 +100,9 @@ class DataGenerator(torch.utils.data.Dataset):
             x_start = self.tile_dataset["coords_x"].iloc[id] - half_patch_size_X
             y_start = self.tile_dataset["coords_y"].iloc[id] - half_patch_size_Y
             patch, meta   = self.wsi_reader.get_data(wsi=wsi_obj, location=[y_start,x_start], size=self.patch_size, level=level)
-            #print(patches.shape, patch.shape)
+
             patch = np.swapaxes(patch,0,2)
-            #print('after',patches.shape, patch.shape)
-            #plt.show()
+
             if self.transform:
                 patch = self.transform(patch)
             patches[level] = patch
@@ -143,22 +141,30 @@ class DataModule(LightningDataModule):
                 .reset_index(drop=True)
                 )
 
-        tile_dataset_sampled = tile_dataset_sampled.sample(frac=1).reset_index(drop=True) ## shuffle
+        # Get unique 'SVS_Path' values and split into train val test sets        
+        unique_svs_paths                    = tile_dataset_sampled['SVS_PATH'].unique()
+        train_val_svs_paths, test_svs_paths = train_test_split(unique_svs_paths,
+                                                               train_size= config['DATA']['Train_Size'] + config['DATA']['Val_Size'],
+                                                               random_state=42)
+        
+        train_svs_paths, val_svs_paths      = train_test_split(train_val_svs_paths,
+                                                               train_size = config['DATA']['Train_Size']/( config['DATA']['Train_Size'] + config['DATA']['Val_Size']),
+                                                               random_state=np.random.randint(0,10000))        
+        
+        # Create train, val and test datasets based on the 'SVS_Path' values
+        tile_dataset_train = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(train_svs_paths)]
+        tile_dataset_val = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(val_svs_paths)]        
+        tile_dataset_test = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(test_svs_paths)]
 
-        # Split in train/val/test so that final proportions are train_size/val_size/test_size
-        tile_dataset_train, tile_dataset_test_val = train_test_split(tile_dataset_sampled,  test_size = 1- config['DATA']['Train_Size'], random_state=42)
-        tile_dataset_val, tile_dataset_test       = train_test_split(tile_dataset_test_val, test_size =  config['DATA']['Test_Size']/(config['DATA']['Test_Size']+config['DATA']['Val_Size']), random_state=42)        
-
-        ## Normal
         self.train_data = DataGenerator(tile_dataset_train, config=config, transform=train_transform, **kwargs)
         self.val_data   = DataGenerator(tile_dataset_val,   config=config, transform=val_transform, **kwargs)
         self.test_data  = DataGenerator(tile_dataset_test,  config=config, transform=val_transform, **kwargs)
      
     def train_dataloader(self):
-        return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=False)    
+        return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=False, shuffle=True)    
 
     def val_dataloader(self):
-        return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=False)    
+        return DataLoader(self.val_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=False, shuffle=True)    
 
     def test_dataloader(self):
         return DataLoader(self.test_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=False)
