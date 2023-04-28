@@ -30,13 +30,15 @@ config['ADVANCEDMODEL']['Inference'] = True
 
 
 SVS_PATH = None
-CHECKPOINT = None
+PROCESSING_CHECKPOINT = None
+CLASSIFY_CHECKPOINT = None
 print(sys.argv[0])
 if len(sys.argv) > 3:
     SVS_PATH = sys.argv[1]
-    CHECKPOINT = sys.argv[2]
+    PROCESSING_CHECKPOINT = sys.argv[2]
+    CLASSIFY_CHECKPOINT = sys.argv[3]
 
-def complete_inference(SVS_PATH, CHECKPOINT):
+def complete_inference(SVS_PATH, PROCESSING_CHECKPOINT, CLASSIFY_CHECKPOINT):
     SVS_dataset = pd.DataFrame.from_dict({"SVS_PATH":[SVS_PATH], 'id_external':[SVS_PATH]})
     WSI_object = openslide.open_slide(SVS_PATH)
 
@@ -66,7 +68,7 @@ def complete_inference(SVS_PATH, CHECKPOINT):
                     shuffle=False)
 
 
-    model_preprocessing = ConvNet_Preprocessing.load_from_checkpoint(CHECKPOINT)
+    model_preprocessing = ConvNet_Preprocessing.load_from_checkpoint(PROCESSING_CHECKPOINT)
     model_preprocessing.eval()
     trainer = L.Trainer(devices=1,
                         accelerator="gpu",
@@ -91,7 +93,7 @@ def complete_inference(SVS_PATH, CHECKPOINT):
                                     pin_memory=False,
                                     shuffle=False)
 
-    model_classifier    = ConvNet.load_from_checkpoint(sys.argv[3])
+    model_classifier    = ConvNet.load_from_checkpoint(CLASSIFY_CHECKPOINT)
     model_classifier.eval()
     #compiled_model_classifier = torch.compile(model_classifier)
 
@@ -106,5 +108,5 @@ def complete_inference(SVS_PATH, CHECKPOINT):
 
     print(tumour_dataset.mean())
 
-if SVS_PATH is not None and CHECKPOINT is not None:
-    complete_inference(SVS_PATH, CHECKPOINT)
+if SVS_PATH is not None and PROCESSING_CHECKPOINT is not None and CLASSIFY_CHECKPOINT is not None:
+    complete_inference(SVS_PATH, PROCESSING_CHECKPOINT, CLASSIFY_CHECKPOINT)
