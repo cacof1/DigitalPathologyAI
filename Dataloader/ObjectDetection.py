@@ -13,10 +13,10 @@ from torch.utils.data import Dataset, DataLoader
 from typing import Tuple, Dict, Optional
 from pytorch_lightning import LightningDataModule
 from sklearn.model_selection import train_test_split
-from skimage import morphology as morph
+#from skimage import morphology as morph
 
 def get_bbox_from_mask(mask):
-    pos = np.where(mask==255)
+    pos = np.where(mask == 255)
     if pos[0].shape[0] == 0:
         return np.zeros((0, 4))
     else:
@@ -135,20 +135,13 @@ class MFDataset(Dataset):
         obj_ids = np.array([255])
         masks = mask == obj_ids[:, None, None]
 
-        masks = torch.as_tensor(masks, dtype=torch.uint8)
-        boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        labels = torch.as_tensor(labels, dtype=torch.int64)
-        area = torch.as_tensor(area, dtype=torch.float32)
-        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
-        image_id = torch.tensor([i])
-
         target = {}
-        target["boxes"] = boxes
-        target["labels"] = labels
-        target["image_id"] = image_id
-        target['area'] = area
-        target["iscrowd"] = iscrowd
-        target["masks"] = masks
+        target["boxes"] = torch.as_tensor(boxes, dtype=torch.float32)
+        target["labels"] = torch.as_tensor(labels, dtype=torch.int64)
+        target["image_id"] = torch.tensor([i])
+        target['area'] = torch.as_tensor(area, dtype=torch.float32)
+        target["iscrowd"] = torch.zeros((num_objs,), dtype=torch.int64)
+        target["masks"] = torch.as_tensor(masks, dtype=torch.uint8)
 
         if self.transform is not None:
             img, target = self.transform(img, target)
@@ -165,8 +158,7 @@ class MixDataset(Dataset):
 
     def __init__(self,
                  df,
-
-                 wsi_folder,
+                 wsi_folder=None,
                  mask_folder=None,
                  masked_input=True,
                  data_source='nrrd_files',
@@ -200,15 +192,14 @@ class MixDataset(Dataset):
             SVS_ID = self.df['SVS_ID'][i]
             top_left = (self.df['coords_x'][i], self.df['coords_y'][i])
             wsi_object = openslide.open_slide(self.wsi_folder + '{}.svs'.format(SVS_ID))
+            img = np.array(wsi_object.read_region(top_left, self.vis_level, (256, 256)).convert("RGB"))
+            box = [self.df['xmin'][i], self.df['ymin'][i], self.df['xmax'][i], self.df['ymax'][i]]
 
             if self.masked_input:
                 index = self.df['index'][i]
-                data = np.array(wsi_object.read_region(top_left, self.vis_level, (256, 256)).convert("RGB"))
-                mask = np.load(self.mask_folder + '{}_detected_masks.npy'.format(SVS_ID))[index]
-            else:
-                x = self.df['cell_x'][i]
-                y = self.df['cell_y'][i]
-                img = np.array(wsi_object.read_region((int(x), int(y)), self.vis_level, self.dim).convert("RGB"))
+                mask = np.load(self.mask_folder + '{}_detected_masks.npy'.format(SVS_ID))[index].astype('bool')
+                box = get_bbox_from_mask(np.array(255 * mask))
+
 
         elif self.data_source == 'nrrd_files':
             custom_field_map = {
@@ -221,15 +212,22 @@ class MixDataset(Dataset):
                 'annotation_label': 'string',
                 'mask': 'double matrix'}
 
+            #print(self.df['nrrd_file'][i])
+
             data, header = nrrd.read(os.path.join(self.nrrd_path, self.df['nrrd_file'][i]), custom_field_map)
             img = data[256:, 256:, :]
             mask = header['mask'][256:, 256:].astype('bool')
-            mask = morph.remove_small_objects(mask, min_size=300)
-            mask_3d = np.stack((mask, mask, mask), axis=-1)
+            #mask = morph.remove_small_objects(mask, min_size=300)
             box = get_bbox_from_mask(np.array(255 * mask))
-            center = ([(box[1]+box[3])/2, (box[0]+box[2])/2])
+
+        center = ([(box[1] + box[3]) / 2, (box[0] + box[2]) / 2])
+        center[0] = max(center[0], 32)
+        center[0] = min(center[0], 224)
+        center[1] = max(center[1], 32)
+        center[1] = min(center[1], 224)
 
         if self.masked_input:
+            mask_3d = np.stack((mask, mask, mask), axis=-1)
             masked_img = (img * mask_3d)[int(center[0] - 32):int(center[0] + 32), int(center[1] - 32):int(center[1] + 32), :]
             img = np.array(masked_img)
         else:
@@ -237,35 +235,15 @@ class MixDataset(Dataset):
                 
         if self.transform: img = self.transform(img)
 
-        if self.extract_feature:
-            feature_vector = extract_features(np.moveaxis(img.cpu().detach().numpy(), 0, -1),
-                                              numPoints=self.feature_setting['numPoints'],
-                                              radius=self.feature_setting['radius'],
-                                              color_space=self.feature_setting['color_space'],
-                                              spatial_size=self.feature_setting['spatial_size'],
-                                              hist_bins=self.feature_setting['hist_bins'],
-                                              orient=self.feature_setting['orient'],
-                                              pix_per_cell=self.feature_setting['pix_per_cell'],
-                                              cell_per_block=self.feature_setting['cell_per_block'],
-                                              hog_channel=self.feature_setting['hog_channel'],
-                                              stats_feat=self.feature_setting['stats_feat'],
-                                              lbp_feat=self.feature_setting['lbp_feat'],
-                                              spatial_feat=self.feature_setting['spatial_feat'],
-                                              hist_feat=self.feature_setting['hist_feat'],
-                                              hog_feat=self.feature_setting['hog_feat'])
-            data = [img, feature_vector]
-        else:
-            data = img
-
         if self.inference:
-            return data
+            return img
         else:
             if self.data_source == 'svs_files':
                 label = torch.as_tensor(self.df['gt_label'][i], dtype=torch.int64)
             elif self.data_source == 'nrrd_files':
                 label = torch.as_tensor(self.df['ann_label'][i], dtype=torch.int64)
 
-            return data, label
+            return img, label
 
     def __len__(self):
         return self.df.shape[0]
@@ -295,9 +273,8 @@ class MFDataModule(LightningDataModule):
 
         if self.DataType == 'MFDataset':
             self.train_data = MFDataset(df_train, augmentation=augmentation, normalization=normalization, inference=inference, **kwargs)
-
-            self.val_data = MFDataset(df_val, augmentation=augmentation, normalization=normalization, inference=inference, **kwargs)
-            self.test_data = MFDataset(df_test, augmentation=augmentation, normalization=normalization, inference=inference, **kwargs)
+            self.val_data = MFDataset(df_val, augmentation=None, normalization=normalization, inference=inference, **kwargs)
+            self.test_data = MFDataset(df_test, augmentation=None, normalization=normalization, inference=inference, **kwargs)
 
 
         elif self.DataType == 'MixDataset':

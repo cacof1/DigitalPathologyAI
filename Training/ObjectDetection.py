@@ -7,7 +7,7 @@ import pandas as pd
 import random
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
-#from QA.Normalization.Colour import ColourNorm_old
+from QA.Normalization.Colour import ColourNorm_old
 import albumentations as A
 from Utils.ObjectDetectionTools import collate_fn
 import torch
@@ -28,26 +28,22 @@ augmentation = A.Compose([
     A.RandomBrightnessContrast(p=config['AUGMENTATION']['randombrightnesscontrast']),
 ])
 
-'''if config['QC']['macenko_norm']:
+if config['QC']['macenko_norm']:
     normalization = T.Compose([
-        #T.ToTensor(),  # this also normalizes to [0,1].
         ColourNorm_old.Macenko(saved_fit_file=config['QC']['macenko_file']),
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-else:'''
-normalization = T.Compose([
-    #T.ToTensor(),
-    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-    ])
+else:
+    normalization = T.Compose([
+        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ])
 
 df = pd.read_csv(config['DATA']['dataframe'])
 df = df[(df['quality'] == 1) & (df['refine'] == 0)]
-#df_all = df[df['num_objs'] == 1]
 
 df = df[df['ann_label'] == 'yes']
 #df = df[df['ann_label'] != '?']
-
 
 print(df)
 
@@ -108,35 +104,23 @@ seed_everything(config['MODEL']['random_seed'])
  
 model = MaskFRCNN(config)
 
-log_path = config['MODEL']['log_path']
-
 checkpoint_callback = ModelCheckpoint(
     monitor=config['CHECKPOINT']['monitor'],
-    dirpath=log_path,
+    dirpath=os.path.join(config['MODEL']['log_path'],config['MODEL']['base_model']),
     filename=config['CHECKPOINT']['filename'],
     save_top_k=config['CHECKPOINT']['save_top_k'],
     mode=config['CHECKPOINT']['mode'],
 )
 
-logger = TensorBoardLogger(log_path, name=config['MODEL']['base_model'])
+logger = TensorBoardLogger(config['MODEL']['log_path'], name=config['MODEL']['base_model'])
 
 trainer = Trainer(accelerator="gpu",
                   devices=config['MODEL']['GPU_ID'],
+                  #strategy='ddp_find_unused_parameters_false',
                   benchmark=True,
                   max_epochs=config['MODEL']['max_epochs'],
                   callbacks=[checkpoint_callback],
                   logger=logger,)
 
-'''
-trainer = Trainer(accelerator="gpu",
-                  devices=config['MODEL']['GPU_ID'],
-                  strategy='ddp_find_unused_parameters_false',
-                  benchmark=True,
-                  max_epochs=config['MODEL']['max_epochs'],
-                  callbacks=[checkpoint_callback],
-                  logger=logger,
-                  )'''
-
 trainer.fit(model,dm)
-trainer.save_checkpoint(config['MODEL']['saved_model_name'])
 

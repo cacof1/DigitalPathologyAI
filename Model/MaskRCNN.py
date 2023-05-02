@@ -48,7 +48,7 @@ class MaskFRCNN(LightningModule):
             self.model = MaskRCNN(backbone, num_classes=self.num_classes, rpn_anchor_generator=anchor_generator, box_roi_pool=roi_pooler,mask_roi_pool=mask_roi_pooler)
 
     def forward(self, x, *args, **kwargs):
-        return self.model(x)
+        return self.model(x[0])
 
     def configure_optimizers(self):
         
@@ -110,7 +110,7 @@ class MaskFRCNN(LightningModule):
         return losses    
     
     def validation_step(self, batch, batch_idx):
- 
+
         self.model.eval()
         images, targets = batch
         images = list(image.cuda() for image in images)

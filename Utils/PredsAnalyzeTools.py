@@ -9,14 +9,15 @@ def Preds2Results(Preds,
                   batch_size,
                   Detection_Path='/home/dgs2/data/DigitalPathologyAI/MitoticDetection/DetectionResults/',
                   threshold=0.5,
-                  label_name='num_objs',
+                  #label_name='num_objs',
                   save_name='detected'):
+
     detected_coords = []
     detected_masks = []
     detected_scores = []
     detected_boxes = []
     tumour_probs = []
-    gt_labels = []
+    #gt_labels = []
 
     for i in range(slide_dataset.shape[0]):
         num_of_batch = int(i / batch_size)
@@ -26,7 +27,7 @@ def Preds2Results(Preds,
         scores = prediction['scores'].cpu().detach().numpy()
         masks = prediction['masks'].cpu().detach().numpy()
         top_left = (slide_dataset.coords_x[i], slide_dataset.coords_y[i])
-        gt_label = slide_dataset[label_name][i]
+        #gt_label = slide_dataset[label_name][i]
 
         if len(scores) == 0:
             label = 0
@@ -44,7 +45,7 @@ def Preds2Results(Preds,
                 detected_scores.append(max_score)
                 detected_boxes.append(box)
                 tumour_probs.append(slide_dataset['prob_tissue_type_Tumour'][i])
-                gt_labels.append(gt_label)
+                #gt_labels.append(gt_label)
 
         if i % 5000 == 0:
             print('{}/{} tiles processed'.format(i, slide_dataset.shape[0]))
@@ -65,12 +66,10 @@ def Preds2Results(Preds,
     df['ymin'] = np.array(detected_boxes)[:, 1]
     df['ymax'] = np.array(detected_boxes)[:, 3]
     df['prob_tissue_type_Tumour'] = np.array(tumour_probs)
-    df['gt_label'] = np.array(gt_labels)
+    #df['gt_label'] = np.array(gt_labels)
 
     df.to_csv(Detection_Path + '{}_{}_coords.csv'.format(slide_dataset['id_external'][0], save_name), index=False)
     np.save(Detection_Path + '{}_{}_masks.npy'.format(slide_dataset['id_external'][0], save_name), detected_masks)
-
-    print('Number of Mitotic Proposals: {}'.format(df.shape[0]))
 
     return df, detected_masks
 

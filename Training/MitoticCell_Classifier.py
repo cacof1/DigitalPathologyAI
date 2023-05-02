@@ -1,6 +1,7 @@
 from Dataloader.Dataloader import *
 from Dataloader.ObjectDetection import *
 import toml
+import sys
 from Utils import GetInfo
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
@@ -8,12 +9,12 @@ import pytorch_lightning as pl
 from torchvision import transforms
 import torch
 from QA.Normalization.Colour import ColourNorm_old
-from Model.ConvNet import ConvNet
+from Model.MitoticConvNet import ConvNet
 from sklearn import preprocessing
 from Utils.sampling_schemes import *
 import os
 
-config = toml.load(sys.argv[1])
+config = toml.load('/home/dgs2/Software/DigitalPathologyAI/Configs/config_mitotic_classification.ini')#toml.load(sys.argv[1])
 n_gpus = len(config['BASEMODEL']['GPU_ID'])#torch.cuda.device_count()
 name = 'MitoticClassification'
 
@@ -21,10 +22,7 @@ name = 'MitoticClassification'
 #SynchronizeSVS(config, SVS_dataset)
 #print(SVS_dataset)
 
-if 'logger_folder' in config['CHECKPOINT']:
-    logger = TensorBoardLogger(os.path.join('lightning_logs', config['CHECKPOINT']['logger_folder']), name=name)
-else:
-    logger = TensorBoardLogger('lightning_logs', name=name)
+logger = TensorBoardLogger(config['CHECKPOINT']['log_path'], name=config['CHECKPOINT']['logger_folder'])
 
 lr_monitor = LearningRateMonitor(logging_interval='step')
 
@@ -39,8 +37,7 @@ pl.seed_everything(config['ADVANCEDMODEL']['Random_Seed'], workers=True)
 if config['AUGMENTATION']['Rand_Operations'] > 0:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
-        ColourNorm_old.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
-            'NORMALIZATION'] else None,
+        #ColourNorm_old.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.ToPILImage(),
         transforms.RandAugment(num_ops=config['AUGMENTATION']['Rand_Operations'],
                                magnitude=config['AUGMENTATION']['Rand_Magnitude']),
@@ -54,11 +51,10 @@ if config['AUGMENTATION']['Rand_Operations'] > 0:
 else:
     train_transform = transforms.Compose([
         transforms.ToTensor(),
-        ColourNorm_old.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
-            'NORMALIZATION'] else None,
+        #ColourNorm_old.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
         transforms.ToPILImage(),
         transforms.RandomRotation(degrees=(0, 180)),
-        # transforms.RandomHorizontalFlip(config['AUGMENTATION']['Horizontal_Flip']),
+        transforms.RandomHorizontalFlip(config['AUGMENTATION']['Horizontal_Flip']),
         transforms.RandomAdjustSharpness(sharpness_factor=2),
         transforms.RandomAutocontrast(p=0.5),
         transforms.ToTensor(),
@@ -67,11 +63,9 @@ else:
 
     ])
 
-
 val_transform = transforms.Compose([
     transforms.ToTensor(),  # this also normalizes to [0,1].
-    ColourNorm_old.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config[
-        'NORMALIZATION'] else None,
+    #ColourNorm_old.Macenko(saved_fit_file=config['NORMALIZATION']['Colour_Norm_File']) if 'Colour_Norm_File' in config['NORMALIZATION'] else None,
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     transforms.Resize(config['DATA']['dim']),
 
@@ -91,17 +85,19 @@ trainer = pl.Trainer(accelerator="gpu",
                      log_every_n_steps=5)
 
 df = pd.read_csv(config['DATA']['Dataframe'])
+df_error = pd.read_csv(config['DATA']['Errors_df'])
+df = df[~df['nrrd_file'].isin(df_error['nrrd_file'])]
 df = df.astype({'SVS_ID':'str'})
 
-'''for SVS_ID in df.SVS_ID.unique():
-    try:
-        wsi_object = openslide.open_slide(config['DATA']['SVS_Folder'] + '{}.svs'.format(SVS_ID))
-    except:
-        print('{} not found'.format(SVS_ID))
-        df = df[df['SVS_ID'] != SVS_ID]'''
-
+df = df[(df['quality'] == 1) & (df['refine'] == 0)]
 df = df[df['ann_label'] != '?']
 
+le = preprocessing.LabelEncoder()
+le.fit(df['ann_label'])
+df['ann_label'] = le.transform(df['ann_label'])
+print(list(le.classes_))
+config['DATA']['N_Classes'] = len(df['ann_label'].unique())
+df.reset_index(drop=True, inplace=True)
 print(df)
 
 df_test = df[df['SVS_ID'].isin(config['DATA']['filenames_test'])]
@@ -129,8 +125,8 @@ data = MFDataModule(df_train,
                     df_test,
                     DataType='MixDataset',
                     masked_input=config['DATA']['masked_input'],
-                    wsi_folder=config['DATA']['SVS_Folder'],
-                    mask_folder=config['DATA']['mask_folder'],
+                    #wsi_folder=config['DATA']['SVS_Folder'],
+                    #mask_folder=config['DATA']['mask_folder'],
                     nrrd_path = config['DATA']['nrrd_path'],
                     data_source = config['DATA']['data_source'],
                     dim = config['DATA']['dim'],
@@ -143,10 +139,6 @@ data = MFDataModule(df_train,
 
 img, label = data.val_data[0]
 
-le = preprocessing.LabelEncoder()
-le.fit(df[config['DATA']['Label']])
-print(list(le.classes_))
-config['DATA']['N_Classes'] = len(df[config['DATA']['Label']].unique())
 model = ConvNet(config, label_encoder=le)
 
 trainer.fit(model, data)

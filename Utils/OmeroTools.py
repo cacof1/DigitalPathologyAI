@@ -3,7 +3,8 @@ import pandas as pd
 import os, sys
 from collections import OrderedDict
 from pathlib import Path
-
+from typing import Dict, Any
+import itertools
 try:
     from omero.api import RoiOptions
     from omero.rtypes import rstring, rlong, unwrap, rdouble, rint
@@ -18,7 +19,6 @@ except ImportError:
 
 from scipy.io import loadmat
 import matplotlib.pyplot as plt
-
 cmap = plt.get_cmap('Set1')
 rgb_cm = cmap.colors  # returns array-like color
 
@@ -223,14 +223,103 @@ def list_project_files(host=None, user=None, pw=None, target_group=None, target_
 
     return project_files
 
+def QueryImageFromCriteria(config: dict, **kwargs) -> pd.DataFrame:
+    print("Querying from Server")
+    df = pd.DataFrame()
+    with connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw']) as conn:
+        conn.SERVICE_OPTS.setOmeroGroup('-1')
+        keys = list(config['CRITERIA'].keys())
+        value_iter = itertools.product(*config['CRITERIA'].values())  ## Create a joint list with all elements
+        for value in value_iter:
+            query_base = """
+            select image.id, image.name, f2.size, a from
+            ImageAnnotationLink ial
+            join ial.child a
+            join ial.parent image
+            left outer join image.pixels p
+            left outer join image.fileset as fs
+            left outer join fs.usedFiles as uf
+            left outer join uf.originalFile as f2
+            """
+            query_end = ""
+            params = omero.sys.ParametersI()
+            for nb, temp in enumerate(value):
+                query_base += "join a.mapValue mv" + str(nb) + " \n        "
+                if nb == 0:
+                    query_end += "where (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
+                        nb) + ".value = :value" + str(nb) + ")"
+                else:
+                    query_end += " and (mv" + str(nb) + ".name = :key" + str(nb) + " and mv" + str(
+                        nb) + ".value = :value" + str(nb) + ")"
+                params.addString('key' + str(nb), keys[nb])
+                params.addString('value' + str(nb), temp)
 
-if __name__ == '__main__':
-    # Example of how to use the download_omero_ROIs function:
-    download_path = '/media/mikael/LaCie/sarcoma/contours/test/'
-    host = '128.16.11.124'
-    user = 'msimard'
-    pw = 'msimard'
-    target_member = 'msimard'
-    target_group = 'Sarcoma Classification'
-    ids = ['484759']  # ids should be a list
-    download_image('484759', './Data', user, host, pw)
+            query = query_base + query_end
+            result = conn.getQueryService().projection(query, params, {"omero.group": "-1"})
+            df_criteria = pd.DataFrame()
+            if len(result) > 0:
+                for row in result:  ## Transform the results into a panda dataframe for each found match
+                    temp = pd.DataFrame(
+                        [[row[0].val, Path(row[1].val).stem, row[2].val, *row[3].val.getMapValueAsMap().values()]],
+                        columns=["id_omero", "id_external", "Size", *row[3].val.getMapValueAsMap().keys()])
+                    df_criteria = pd.concat([df_criteria, temp])
+
+                svs_folder = Path(config['DATA']['SVS_Folder'])
+                patches_folder = svs_folder / 'patches'
+                df_criteria['SVS_PATH'] = [(svs_folder / (image_id + '.svs')).as_posix() for image_id in
+                                           df_criteria['id_external']]
+                df_criteria['NPY_PATH'] = [(patches_folder / (image_id + '.npy')).as_posix() for image_id in
+                                           df_criteria['id_external']]
+                df = pd.concat([df, df_criteria])
+    print(df)
+    return df
+
+
+def SynchronizeSVS(config: dict, df: pd.DataFrame) -> None:
+    conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
+    conn.SERVICE_OPTS.setOmeroGroup('-1')
+
+    for index, image in df.iterrows():
+        filepath = image['SVS_PATH']
+        remote_size = image['Size']
+
+        if os.path.exists(filepath):  # Exists
+            local_size = os.path.getsize(filepath)
+
+            if local_size != remote_size:  # Corrupted
+                print(
+                    f"SVS file size for {filepath} does not match (local: {local_size}, remote: {remote_size}) - redownloading...")
+                os.remove(filepath)
+                try:
+                    download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'],
+                                   config['OMERO']['Host'], config['OMERO']['Pw'])
+                except Exception as e:
+                    print(f"Error downloading image {filepath}: {e}")
+        else:  # Doesn't exist
+            print(f"SVS file {filepath} does not exist - downloading...")
+            try:
+                download_image(image['id_omero'], config['DATA']['SVS_Folder'], config['OMERO']['User'],
+                               config['OMERO']['Host'], config['OMERO']['Pw'])
+            except Exception as e:
+                print(f"Error downloading image {filepath}: {e}")
+
+    conn.close()
+
+
+def SynchronizeNPY(config: Dict[str, Any], df: pd.DataFrame) -> None:
+    with connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw']) as conn:
+        conn.SERVICE_OPTS.setOmeroGroup('-1')
+
+        for index, image in df.iterrows():
+            npy_path = image['NPY_PATH']
+
+            if not os.path.exists(npy_path):  # Doesn't exist
+                npy_directory = os.path.join(config['DATA']['SVS_Folder'], 'patches')
+                os.makedirs(npy_directory, exist_ok=True)
+
+                print(f"NPY file {npy_path} does not exist - downloading...")
+
+                try:
+                    download_annotation(conn.getObject("Image", image['id_omero']), npy_directory)
+                except Exception as e:
+                    print(f"Error downloading NPY file {npy_path}: {e}")

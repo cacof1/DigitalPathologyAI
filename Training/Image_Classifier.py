@@ -12,12 +12,14 @@ from sklearn import preprocessing
 from lightning.pytorch.strategies import DDPStrategy
 from Dataloader.Dataloader import (
     DataModule,
-    QueryImageFromCriteria,
     LoadFileParameter,
+)
+from Utils import GetInfo
+from Utils.OmeroTools import (
+    QueryImageFromCriteria,
     SynchronizeSVS,
     SynchronizeNPY
 )
-from Utils import GetInfo
 from Model.ConvNet import ConvNet
 from QA.Normalization.Colour import ColourAugment
 import datetime
@@ -26,7 +28,7 @@ def load_config(config_file):
 
 def get_tile_dataset(config):
     SVS_dataset = QueryImageFromCriteria(config)
-    #SVS_dataset = SVS_dataset.groupby('diagnosis').head(n=5)
+    SVS_dataset = SVS_dataset.groupby('diagnosis').head(n=5)
     SynchronizeSVS(config, SVS_dataset)    
     SynchronizeNPY(config, SVS_dataset)
     tile_dataset = LoadFileParameter(config, SVS_dataset)

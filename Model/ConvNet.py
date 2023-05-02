@@ -19,10 +19,8 @@ class ConvNet(L.LightningModule):
         super().__init__()
 
         self.save_hyperparameters()
-        #self.validation_step_outputs = []
-        #self.training_step_outputs = []
         self.config = config
-        self.loss_fcn = nn.CrossEntropyLoss()#getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
+        self.loss_fcn = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
         self.LabelEncoder = label_encoder
         
         if self.config['BASEMODEL']['Loss_Function'] == 'CrossEntropyLoss':
