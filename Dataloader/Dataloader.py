@@ -4,7 +4,6 @@ import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import torch
-import omero
 import os
 from collections import Counter
 from sklearn.model_selection import train_test_split
