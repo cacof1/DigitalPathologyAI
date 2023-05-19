@@ -28,7 +28,6 @@ def load_config(config_file):
 
 def get_tile_dataset(config):
     SVS_dataset = QueryImageFromCriteria(config)
-    SVS_dataset = SVS_dataset.groupby('diagnosis').head(n=5)
     SynchronizeSVS(config, SVS_dataset)    
     SynchronizeNPY(config, SVS_dataset)
     tile_dataset = LoadFileParameter(config, SVS_dataset)
