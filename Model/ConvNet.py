@@ -17,47 +17,47 @@ from torchvision import models, transforms
 class ConvNet(L.LightningModule):
     def __init__(self, config, label_encoder=None):
         super().__init__()
-
-        self.save_hyperparameters()
-        self.config = config
-        self.loss_fcn = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
-        self.LabelEncoder = label_encoder
+        self.config       = config
         
+        self.loss_fcn     = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
         if self.config['BASEMODEL']['Loss_Function'] == 'CrossEntropyLoss':
             self.loss_fcn = torch.nn.CrossEntropyLoss(label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
 
-        self.activation = getattr(torch.nn, self.config["BASEMODEL"]["Activation"])()
+        self.LabelEncoder = label_encoder        
+        self.activation   = getattr(torch.nn, self.config["BASEMODEL"]["Activation"])()
 
         self.models = []
         for zoom_level in range(len(self.config['BASEMODEL']['Vis'])):
-            backbone = getattr(models, config['BASEMODEL']['Backbone'])
-            
-            if 'densenet' in config['BASEMODEL']['Backbone']:
-                backbone = backbone(weights='DEFAULT',
-                                    drop_rate=config['ADVANCEDMODEL']['Drop_Rate'])
+            backbone          = getattr(models, self.config['BASEMODEL']['Backbone'])                    
+
+            if 'densenet' in self.config['BASEMODEL']['Backbone']:
+                backbone = backbone(weights='DEFAULT',drop_rate=self.config['ADVANCEDMODEL']['Drop_Rate'])
+                
             else:
                 backbone = backbone(weights='DEFAULT')
-
-            out_feats = list(backbone.children())[-1].out_features
-
+                
+            self.out_feats = list(backbone.children())[-1].out_features 
             self.models.append(backbone)
             self.add_module(f"model_{zoom_level}", self.models[zoom_level])
 
+            
         self.classifier = nn.Sequential(
-            nn.Linear(out_feats * len(config['BASEMODEL']['Vis']), 512),
+            nn.Linear(self.out_feats * len(self.config['BASEMODEL']['Vis']), 512),
             nn.Linear(512, self.config["DATA"]["N_Classes"]),
             self.activation,
         )
 
+        self.save_hyperparameters()
+
+              
     def forward(self, x):
         aggregated_features = []
         for zoom_level in range(len(self.config['BASEMODEL']['Vis'])):
             features = self.models[zoom_level](x[:,zoom_level]) ## skip the batch
             aggregated_features.append(features)
-        
         aggregated_features = torch.cat(aggregated_features, dim=1)
         return self.classifier(aggregated_features)
-
+    
     def training_step(self, train_batch, batch_idx):
         image_dict, labels = train_batch
         logits = self.forward(image_dict)
@@ -66,26 +66,24 @@ class ConvNet(L.LightningModule):
         acc = accuracy(preds, labels)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         self.log('train_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        #self.training_step_outputs.append({"loss": loss, "preds": preds, "labels": labels})                
         return {"loss": loss, "preds": preds, "labels": labels}
 
     def validation_step(self, val_batch, batch_idx):
         image_dict, labels = val_batch
         logits = self.forward(image_dict)
-        loss = self.loss_fcn(logits, labels)
+        loss   = self.loss_fcn(logits, labels)                
         preds = torch.argmax(softmax(logits, dim=1), dim=1)
         acc = accuracy(preds, labels)
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         self.log('val_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        #self.validation_step_outputs.append({"loss": loss, "preds": preds, "labels": labels})        
         return {"loss": loss, "preds": preds, "labels": labels}
 
     def test_step(self, test_batch, batch_idx):
         image_dict, labels = test_batch
         logits = self.forward(image_dict)
-        loss = self.loss_fcn(logits, labels)
-        preds = torch.argmax(softmax(logits, dim=1), dim=1)
-        acc = accuracy(preds, labels)
+        loss   = self.loss_fcn(logits, labels)
+        preds  = torch.argmax(softmax(logits, dim=1), dim=1)
+        acc    = accuracy(preds, labels)
         self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         self.log('test_acc', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return {"loss": loss, "preds": preds, "labels": labels}
@@ -95,25 +93,6 @@ class ConvNet(L.LightningModule):
         output     = softmax(self(image_dict), dim=1)
         return self.all_gather(output)
     
-    #def training_step_end(self, training_step_output):
-    #    training_step_output = self.trainer.strategy.reduce([x['loss'] for x in self.training_step_output])
-    #    self.training_step_outputs.append(training_step_output)
-    #    return training_step_output
-
-    #def validation_step_end(self, validation_step_output):
-    #    self.validation_step_outputs.append(validation_step_output)
-
-    #def on_train_epoch_end(self):
-    #    epoch_average = torch.stack([x['loss'] for x in self.training_step_outputs]).mean()
-    #    self.log("training_epoch_average", epoch_average,sync_dist=True)
-    #    self.training_step_outputs.clear()  # free memory
-        
-    #def on_validation_epoch_end(self):
-    #    #self.ConfusionMatrix()
-    #    epoch_average = torch.stack([x['loss'] for x in self.validation_step_outputs]).mean()
-    #    self.log("validation_epoch_average", epoch_average,sync_dist=True)
-    #    self.validation_step_outputs.clear()  # free memory    
-        
     def configure_optimizers(self):
         optimizer = getattr(torch.optim, self.config['OPTIMIZER']['Algorithm'])
         optimizer = optimizer(self.parameters(),
@@ -130,7 +109,7 @@ class ConvNet(L.LightningModule):
             sched = transformers.optimization.get_cosine_schedule_with_warmup(optimizer,
                                                                               num_warmup_steps=warmup_steps,
                                                                               num_training_steps=total_steps,
-                                                                            num_cycles=0.5)
+                                                                              num_cycles=0.5)
             
             scheduler = {'scheduler': sched,
                          'interval': 'step',

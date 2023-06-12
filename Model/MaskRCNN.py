@@ -18,11 +18,11 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor,MaskRCNN
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
-from pytorch_lightning.core.lightning import LightningModule
+import lightning as L
 from Utils.ObjectDetectionTools import get_coco_api_from_dataset, MetricLogger, CocoEvaluator
 
 #%%
-class MaskFRCNN(LightningModule):
+class MaskFRCNN(L.LightningModule):
     def __init__(self, config, ):
         
         super().__init__()
@@ -46,6 +46,8 @@ class MaskFRCNN(LightningModule):
             roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'], output_size=3, sampling_ratio=2)
             mask_roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'],output_size=7,sampling_ratio=2)
             self.model = MaskRCNN(backbone, num_classes=self.num_classes, rpn_anchor_generator=anchor_generator, box_roi_pool=roi_pooler,mask_roi_pool=mask_roi_pooler)
+
+        self.validation_step_outputs = []
 
     def forward(self, x, *args, **kwargs):
         return self.model(x[0])
@@ -90,7 +92,6 @@ class MaskFRCNN(LightningModule):
         return ([optimizer], [scheduler])
 
     def training_step(self, batch, batch_idx):
-
         images, targets = batch
         images = list(image.cuda() for image in images)
         targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
@@ -101,38 +102,38 @@ class MaskFRCNN(LightningModule):
         loss_objectness = loss_dict['loss_objectness']
         loss_mask = loss_dict['loss_mask']
         
-        self.log('train_loss', losses, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log('train_loss_classifier', loss_classifier, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        #self.log('train_loss_box_reg', loss_box_reg, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        #self.log('train_loss_objectness', loss_objectness, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log('train_loss_mask', loss_mask, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log('train_loss', losses, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_loss_classifier', loss_classifier, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log('train_loss_box_reg', loss_box_reg, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log('train_loss_objectness', loss_objectness, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log('train_loss_mask', loss_mask, on_step=True, on_epoch=True, prog_bar=True, logger=False)
 
         return losses    
     
     def validation_step(self, batch, batch_idx):
-
         self.model.eval()
         images, targets = batch
         images = list(image.cuda() for image in images)
         targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
         losses = self.calculate_loss(images,targets)
         val_loss = sum(loss for loss in losses.values())
-
-        self.log('val_loss', val_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.validation_step_outputs.append(val_loss)
+        self.log('val_loss', val_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         
         return val_loss
 
-    def validation_epoch_end(self, outputs):
-
-        losses = sum(outputs)/len(self.config['MODEL']['GPU_ID'])
+    def on_validation_epoch_end(self):
+        losses = sum(self.validation_step_outputs)/len(self.config['MODEL']['GPU_ID'])
         coco_evaluator = self.evaluate(header='val')
         tensorboard_logs = {}
         for i in range(6):
             tensorboard_logs["AP@{}".format(self.APitems[i])] = coco_evaluator.coco_eval['segm'].stats[i]
             tensorboard_logs["AR@{}".format(self.ARitems[i])] = coco_evaluator.coco_eval['segm'].stats[i+6]
             
-        self.log('val_AP', tensorboard_logs["AP@IoU_0.50"], on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log('val_AP_all', tensorboard_logs["AP@IoU_0.50_0.95"], on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log('val_AP', tensorboard_logs["AP@IoU_0.50"], on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_AP_all', tensorboard_logs["AP@IoU_0.50_0.95"], on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_AR', tensorboard_logs["AR@maxDets_1"], on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.validation_step_outputs.clear()
 
         return losses
     
@@ -143,22 +144,22 @@ class MaskFRCNN(LightningModule):
         targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
         losses = self.calculate_loss(images, targets)
         test_loss = sum(loss for loss in losses.values())
-
-        self.log('test_loss', test_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.test_step_outputs.append(test_loss)
+        self.log('test_loss', test_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         
         return test_loss
 
-    def test_epoch_end(self, outputs):
-
-        losses = sum(outputs) / len(self.config['MODEL']['GPU_ID'])
+    def on_test_epoch_end(self):
+        losses = sum(self.test_step_outputs) / len(self.config['MODEL']['GPU_ID'])
         coco_evaluator = self.evaluate(header='test')
         tensorboard_logs = {}
         for i in range(6):
             tensorboard_logs["AP@{}".format(self.APitems[i])] = coco_evaluator.coco_eval['segm'].stats[i]
             tensorboard_logs["AR@{}".format(self.ARitems[i])] = coco_evaluator.coco_eval['segm'].stats[i+6]
             
-        self.log('test_AP', tensorboard_logs["AP@IoU_0.50"], on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log('test_AP_all', tensorboard_logs["AP@IoU_0.50_0.95"], on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log('test_AP', tensorboard_logs["AP@IoU_0.50"], on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_AP_all', tensorboard_logs["AP@IoU_0.50_0.95"], on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.test_step_outputs.clear()
 
         return losses
 
@@ -180,9 +181,9 @@ class MaskFRCNN(LightningModule):
         metric_logger = MetricLogger(delimiter="  ")
         
         if header == 'val':
-            dataloader = self.trainer._data_connector._val_dataloader_source.dataloader()
+            dataloader = self.trainer.val_dataloaders
         elif header == 'test':
-            dataloader = self.trainer._data_connector._test_dataloader_source.dataloader()
+            dataloader = self.trainer.test_dataloaders
 
         coco = get_coco_api_from_dataset(dataloader.dataset)
         iou_types = ['bbox','segm']

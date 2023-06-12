@@ -11,9 +11,10 @@ import torch
 from torch import nn, Tensor
 from torch.utils.data import Dataset, DataLoader
 from typing import Tuple, Dict, Optional
-from pytorch_lightning import LightningDataModule
+from lightning.pytorch import LightningDataModule
 from sklearn.model_selection import train_test_split
 #from skimage import morphology as morph
+from monai.data.wsi_reader import WSIReader
 
 def get_bbox_from_mask(mask):
     pos = np.where(mask == 255)
@@ -47,6 +48,15 @@ class ToTensor(nn.Module):
 transform = Compose([ToTensor(),
                      ])
 
+custom_field_map = {
+                'SVS_ID': 'string',
+                'top_left': 'int list',
+                'center': 'int list',
+                'dim': 'int list',
+                'vis_level': 'int',
+                'diagnosis': 'string',
+                'annotation_label': 'string',
+                'mask': 'double matrix'}
 
 class MFDataset(Dataset):
 
@@ -93,16 +103,6 @@ class MFDataset(Dataset):
             mask = np.load(self.mask_folder + '{}_masks.npy'.format(filename))[index]
 
         elif self.data_source == 'nrrd_files':
-            custom_field_map = {
-                'SVS_ID': 'string',
-                'top_left': 'int list',
-                'center': 'int list',
-                'dim': 'int list',
-                'vis_level': 'int',
-                'diagnosis': 'string',
-                'annotation_label': 'string',
-                'mask': 'double matrix'}
-
             data, header = nrrd.read(os.path.join(self.nrrd_path, self.df['nrrd_file'][i]), custom_field_map)
             img = data[256:, 256:, :]
             mask = header['mask'][256:, 256:].astype('bool')
@@ -162,8 +162,8 @@ class MixDataset(Dataset):
                  mask_folder=None,
                  masked_input=True,
                  data_source='nrrd_files',
-                 dim=(64, 64),
-                 vis_level=0,
+                 patch_size=[64, 64],
+                 vis_list=[0],
                  channels=3,
                  nrrd_path=None,
                  transform=None,
@@ -177,41 +177,34 @@ class MixDataset(Dataset):
         self.masked_input = masked_input
         self.nrrd_path = nrrd_path
         self.data_source = data_source
-        self.dim = dim
-        self.vis_level = vis_level
+        self.patch_size = patch_size
+        self.vis_list = vis_list
         self.channels = channels
         self.extract_feature = extract_feature
         self.feature_setting = feature_setting
         self.transform = transform
         self.inference = inference
+        self.wsi_reader = WSIReader(backend='openslide')
+
 
     def __getitem__(self, i):
 
-        if self.data_source == 'svs_files':
+        patches = torch.empty((len(self.vis_list), 3, *self.patch_size))  ## [Z, C, W, H]
 
-            SVS_ID = self.df['SVS_ID'][i]
-            top_left = (self.df['coords_x'][i], self.df['coords_y'][i])
-            wsi_object = openslide.open_slide(self.wsi_folder + '{}.svs'.format(SVS_ID))
-            img = np.array(wsi_object.read_region(top_left, self.vis_level, (256, 256)).convert("RGB"))
+        if self.data_source == 'svs_files':
+            wsi_obj = self.wsi_reader.read(os.path.join(self.wsi_folder, '{}.svs'.format(self.df['SVS_ID'][i])))
+            x_start = self.df["coords_x"].loc[i] - 128
+            y_start = self.df["coords_y"].loc[i] - 128
+            img, meta = self.wsi_reader.get_data(wsi=wsi_obj, location=[y_start, x_start], size=[256, 256], level=0)
+            img = np.swapaxes(img, 0, 2)
             box = [self.df['xmin'][i], self.df['ymin'][i], self.df['xmax'][i], self.df['ymax'][i]]
 
             if self.masked_input:
                 index = self.df['index'][i]
-                mask = np.load(self.mask_folder + '{}_detected_masks.npy'.format(SVS_ID))[index].astype('bool')
+                mask = np.load(self.mask_folder + '{}_detected_masks.npy'.format(self.df['SVS_ID'][i]))[index].astype('bool')
                 box = get_bbox_from_mask(np.array(255 * mask))
 
-
         elif self.data_source == 'nrrd_files':
-            custom_field_map = {
-                'SVS_ID': 'string',
-                'top_left': 'int list',
-                'center': 'int list',
-                'dim': 'int list',
-                'vis_level': 'int',
-                'diagnosis': 'string',
-                'annotation_label': 'string',
-                'mask': 'double matrix'}
-
             #print(self.df['nrrd_file'][i])
 
             data, header = nrrd.read(os.path.join(self.nrrd_path, self.df['nrrd_file'][i]), custom_field_map)
@@ -235,15 +228,17 @@ class MixDataset(Dataset):
                 
         if self.transform: img = self.transform(img)
 
+        patches[0] = img
+
         if self.inference:
-            return img
+            return patches
         else:
             if self.data_source == 'svs_files':
                 label = torch.as_tensor(self.df['gt_label'][i], dtype=torch.int64)
             elif self.data_source == 'nrrd_files':
                 label = torch.as_tensor(self.df['ann_label'][i], dtype=torch.int64)
 
-            return img, label
+            return patches, label
 
     def __len__(self):
         return self.df.shape[0]
@@ -251,9 +246,9 @@ class MixDataset(Dataset):
 
 class MFDataModule(LightningDataModule):
     def __init__(self,
-                 df_train,
-                 df_val,
+                 df,
                  df_test,
+                 val_size=0.2,
                  DataType='MFDataset',
                  batch_size=2,
                  num_of_worker=0,
@@ -270,6 +265,22 @@ class MFDataModule(LightningDataModule):
         self.num_of_worker = num_of_worker
         self.DataType = DataType
         self.collate_fn = collate_fn
+        self.val_size = val_size
+
+        filenames = list(df['SVS_ID'].unique())
+        train_idx, val_idx = train_test_split(filenames, test_size=self.val_size)
+
+        #print('{} Train slides: {}'.format(len(train_idx), train_idx))
+        #print('{} Val slides: {}'.format(len(val_idx), val_idx))
+
+        df_train = df[df['SVS_ID'].isin(train_idx)]
+        df_train.reset_index(drop=True, inplace=True)
+
+        df_val = df[df['SVS_ID'].isin(val_idx)]
+        df_val.reset_index(drop=True, inplace=True)
+
+        print('Training Size: {}/{}({}) Positive Rate: {}'.format(len(df_train), len(df), len(df_train) / len(df), list(df_train['ann_label'].value_counts(normalize=True))[0]))
+        print('Validation Size: {}/{}({}) Positive Rate: {}'.format(len(df_val), len(df), len(df_val) / len(df), list(df_val['ann_label'].value_counts(normalize=True))[0]))
 
         if self.DataType == 'MFDataset':
             self.train_data = MFDataset(df_train, augmentation=augmentation, normalization=normalization, inference=inference, **kwargs)

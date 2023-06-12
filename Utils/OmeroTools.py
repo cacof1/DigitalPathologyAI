@@ -274,7 +274,6 @@ def QueryImageFromCriteria(config: dict, **kwargs) -> pd.DataFrame:
     print(df)
     return df
 
-
 def SynchronizeSVS(config: dict, df: pd.DataFrame) -> None:
     conn = connect(config['OMERO']['Host'], config['OMERO']['User'], config['OMERO']['Pw'])
     conn.SERVICE_OPTS.setOmeroGroup('-1')

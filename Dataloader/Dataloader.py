@@ -4,7 +4,6 @@ import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import torch
-import omero
 import os
 from collections import Counter
 from sklearn.model_selection import train_test_split
@@ -43,29 +42,26 @@ class DataGenerator(torch.utils.data.Dataset):
         svs_path = self.tile_dataset['SVS_PATH'].iloc[id]
         patches = torch.empty((len(self.vis_list), 3, *self.patch_size)) ## [Z, C, W, H]
         wsi_obj = self.wsi_reader.read(svs_path)
-        for level in self.vis_list:
-            
+        
+        for level in self.vis_list:            
             downsample = self.wsi_reader.get_downsample_ratio(wsi_obj,level)            
             half_patch_size_X = self.patch_size[0]*downsample // 2
             half_patch_size_Y = self.patch_size[1]*downsample // 2
             x_start = int(self.tile_dataset["coords_x"].iloc[id] - half_patch_size_X)
             y_start = int(self.tile_dataset["coords_y"].iloc[id] - half_patch_size_Y)
             patch, meta   = self.wsi_reader.get_data(wsi=wsi_obj, location=[y_start,x_start], size=self.patch_size, level=level)
-
             patch = np.swapaxes(patch,0,2)
 
             if self.transform:
                 patch = self.transform(patch)
             patches[level] = patch
         
-
         if self.inference:
             return patches
         else:
             label = self.tile_dataset[self.target].iloc[id]
             if self.target_transform:
                 label = self.target_transform(label)
-
             return patches, label
 
 
@@ -75,12 +71,11 @@ class DataModule(LightningDataModule):
         super().__init__()
 
         self.batch_size  = config['BASEMODEL']['Batch_Size']        
-        self.num_workers = int(.8 * mp.Pool()._processes)  # number of workers for dataloader is 80% of maximum workers.
-
-        if label_encoder:
-            tile_dataset[config['DATA']['Label']] = label_encoder.transform(tile_dataset[config['DATA']['Label']])  # For classif only
-        
-        ## Sampling
+        self.num_workers = 10
+        print(int(.8 * mp.Pool()._processes))
+        if label_encoder: ## Classification
+            tile_dataset[config['DATA']['Label']] = label_encoder.transform(tile_dataset[config['DATA']['Label']])
+            
         if config['DATA']['N_Per_Sample'] is None or config['DATA']['N_Per_Sample'] == float("inf"):
             tile_dataset_sampled = tile_dataset.groupby('SVS_PATH').sample(frac=1)
                 
@@ -100,16 +95,16 @@ class DataModule(LightningDataModule):
         
         train_svs_paths, val_svs_paths      = train_test_split(train_val_svs_paths,
                                                                train_size = config['DATA']['Train_Size']/( config['DATA']['Train_Size'] + config['DATA']['Val_Size']),
-                                                               random_state=np.random.randint(0,10000))        
+                                                               random_state=42)
         
         # Create train, val and test datasets based on the 'SVS_Path' values
-        tile_dataset_train = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(train_svs_paths)]
-        tile_dataset_val = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(val_svs_paths)]        
-        tile_dataset_test = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(test_svs_paths)]
+        self.tile_dataset_train = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(train_svs_paths)]
+        self.tile_dataset_val   = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(val_svs_paths)]        
+        self.tile_dataset_test  = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(test_svs_paths)]
 
-        self.train_data = DataGenerator(tile_dataset_train, config=config, transform=train_transform, **kwargs)
-        self.val_data   = DataGenerator(tile_dataset_val,   config=config, transform=val_transform, **kwargs)
-        self.test_data  = DataGenerator(tile_dataset_test,  config=config, transform=val_transform, **kwargs)
+        self.train_data = DataGenerator(self.tile_dataset_train, config=config, transform=train_transform, **kwargs)
+        self.val_data   = DataGenerator(self.tile_dataset_val,   config=config, transform=val_transform, **kwargs)
+        self.test_data  = DataGenerator(self.tile_dataset_test,  config=config, transform=val_transform, **kwargs)
      
     def train_dataloader(self):
         return DataLoader(self.train_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=False, shuffle=True)    
