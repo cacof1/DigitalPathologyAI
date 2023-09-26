@@ -29,7 +29,7 @@ def get_tile_dataset(config):
     SynchronizeSVS(config, SVS_dataset)    
     SynchronizeNPY(config, SVS_dataset)
     tile_dataset = LoadFileParameter(config, SVS_dataset)
-    tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_Tumour'] > 0.94]
+    tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_Tumour'] > config['BASEMODEL']['Prob_Tumour_Tresh']]
     tile_dataset = tile_dataset.merge(SVS_dataset, on='id_external')
     tile_dataset['SVS_PATH'] = tile_dataset['SVS_PATH_y'] # Ugly
     return tile_dataset#, tile_dataset_full, valid_tumour_tiles_index

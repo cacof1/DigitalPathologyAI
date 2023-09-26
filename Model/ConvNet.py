@@ -18,10 +18,14 @@ class ConvNet(L.LightningModule):
     def __init__(self, config, label_encoder=None):
         super().__init__()
         self.config       = config
-        print(self.config)
+        
         self.loss_fcn     = getattr(torch.nn, self.config["BASEMODEL"]["Loss_Function"])()
         if self.config['BASEMODEL']['Loss_Function'] == 'CrossEntropyLoss':
-            self.loss_fcn = torch.nn.CrossEntropyLoss(label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
+            if "weights" in self.config['DATA']:
+                w = self.config['DATA']['weights']
+            else:
+                w = torch.ones(config['DATA']['N_Classes'])
+            self.loss_fcn = torch.nn.CrossEntropyLoss(weights=w, label_smoothing=self.config['REGULARIZATION']['Label_Smoothing'])
 
         self.LabelEncoder = label_encoder        
         self.activation   = getattr(torch.nn, self.config["BASEMODEL"]["Activation"])()
@@ -52,7 +56,7 @@ class ConvNet(L.LightningModule):
               
     def forward(self, x):
         aggregated_features = []
-        for zoom_level in self.config['BASEMODEL']['Vis']:
+        for zoom_level in range(len(self.config['BASEMODEL']['Vis'])):
             features = self.models[zoom_level](x[:,zoom_level]) ## skip the batch
             aggregated_features.append(features)
         aggregated_features = torch.cat(aggregated_features, dim=1)

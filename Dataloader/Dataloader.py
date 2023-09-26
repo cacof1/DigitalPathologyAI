@@ -44,13 +44,13 @@ class DataGenerator(torch.utils.data.Dataset):
         wsi_obj = self.wsi_reader.read(svs_path)
         
         for level in self.vis_list:            
-            downsample = self.wsi_reader.get_downsample_ratio(wsi_obj,level)            
+            downsample        = self.wsi_reader.get_downsample_ratio(wsi_obj,level)            
             half_patch_size_X = self.patch_size[0]*downsample // 2
             half_patch_size_Y = self.patch_size[1]*downsample // 2
-            x_start = int(self.tile_dataset["coords_x"].iloc[id] - half_patch_size_X)
-            y_start = int(self.tile_dataset["coords_y"].iloc[id] - half_patch_size_Y)
-            patch, meta   = self.wsi_reader.get_data(wsi=wsi_obj, location=[y_start,x_start], size=self.patch_size, level=level)
-            patch = np.swapaxes(patch,0,2)
+            x_start           = int(self.tile_dataset["coords_x"].iloc[id] - half_patch_size_X)
+            y_start           = int(self.tile_dataset["coords_y"].iloc[id] - half_patch_size_Y)
+            patch, meta       = self.wsi_reader.get_data(wsi=wsi_obj, location=[y_start,x_start], size=self.patch_size, level=level)
+            patch             = np.swapaxes(patch,0,2)
 
             if self.transform:
                 patch = self.transform(patch)
@@ -76,7 +76,7 @@ class DataModule(LightningDataModule):
         if label_encoder: ## Classification
             tile_dataset[config['DATA']['Label']] = label_encoder.transform(tile_dataset[config['DATA']['Label']])
             
-        if config['DATA']['N_Per_Sample'] is None or config['DATA']['N_Per_Sample'] == float("inf"):
+        if config['DATA']['N_Per_Sample'] is None or config['DATA']['N_Per_Sample'] == float("inf"): ## Simply shuffle
             tile_dataset_sampled = tile_dataset.groupby('SVS_PATH').sample(frac=1)
                 
         else:
@@ -91,11 +91,11 @@ class DataModule(LightningDataModule):
         unique_svs_paths                    = tile_dataset_sampled['SVS_PATH'].unique()
         train_val_svs_paths, test_svs_paths = train_test_split(unique_svs_paths,
                                                                train_size= config['DATA']['Train_Size'] + config['DATA']['Val_Size'],
-                                                               random_state=42)
+                                                               random_state=config['ADVANCEDMODEL']['Random_Seed'])
         
         train_svs_paths, val_svs_paths      = train_test_split(train_val_svs_paths,
                                                                train_size = config['DATA']['Train_Size']/( config['DATA']['Train_Size'] + config['DATA']['Val_Size']),
-                                                               random_state=42)
+                                                               random_state=config['ADVANCEDMODEL']['Random_Seed'])
         
         # Create train, val and test datasets based on the 'SVS_Path' values
         self.tile_dataset_train = tile_dataset_sampled[tile_dataset_sampled['SVS_PATH'].isin(train_svs_paths)]
@@ -116,7 +116,6 @@ class DataModule(LightningDataModule):
         return DataLoader(self.test_data, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=False)
 
 def LoadFileParameter(config: dict, SVS_dataset: pd.DataFrame) -> pd.DataFrame:
-
     cur_basemodel_str = '_'.join(f"{key}_{config['BASEMODEL'][key]}" for key in ['Patch_Size', 'Vis'])
     tile_dataframe = []
     
