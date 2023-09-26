@@ -23,20 +23,28 @@ from Utils.OmeroTools import (
 from Model.ConvNet import ConvNet
 from QA.Normalization.Colour import ColourAugment
 import datetime, time
-from pytorch_lightning.profiler import PyTorchProfiler
+import pandas as pd
+import numpy as np
+
 def load_config(config_file):
     return toml.load(config_file)
 
 def get_tile_dataset(config):
     SVS_dataset = QueryImageFromCriteria(config)
-    SVS_dataset = SVS_dataset.groupby('diagnosis').head(n=5)
+    #SVS_dataset = SVS_dataset.groupby('diagnosis').head(n=5)  # for debug
     SynchronizeSVS(config, SVS_dataset)    
     SynchronizeNPY(config, SVS_dataset)
     tile_dataset = LoadFileParameter(config, SVS_dataset)
-    tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_Tumour'] > 0.94]
+    tile_dataset = tile_dataset[tile_dataset['prob_tissue_type_Tumour'] > config['BASEMODEL']['Prob_Tumour_Tresh']]
     tile_dataset = tile_dataset.merge(SVS_dataset, on='id_external')
     tile_dataset['SVS_PATH'] = tile_dataset['SVS_PATH_y']
     return tile_dataset
+
+def get_class_weights(tile_dataset, label_encoder):
+    SVS_dataset = tile_dataset.groupby('id_internal').first().reset_index()
+    diagnosis_weights = 1 / SVS_dataset['diagnosis'].value_counts()
+    weights = pd.Series(diagnosis_weights, index=label_encoder.classes_).sort_index().values
+    return torch.tensor(weights / np.sum(weights))
 
 def get_logger(config, model_name):
     logger_folder = config['CHECKPOINT']['logger_folder']
@@ -50,7 +58,6 @@ def get_callbacks(config):
         filename  = f"{{model_name}}-epoch{{epoch:02d}}",
         save_top_k= 1,
         mode      = config['CHECKPOINT']['Mode'])
-
     return [lr_monitor, checkpoint_callback]
 
 def get_transforms(config):
@@ -89,8 +96,7 @@ def main(config_file):
     train_transform, val_transform = get_transforms(config)
     label_encoder = preprocessing.LabelEncoder()
     label_encoder.fit(tile_dataset[config['DATA']['Label']])
-    #ddp = DDPStrategy(timeout=datetime.timedelta(seconds=7200))
-    trainer = L.Trainer(devices=1,
+    trainer = L.Trainer(devices=n_gpus,
                         accelerator="gpu",
                         max_epochs=config['ADVANCEDMODEL']['Max_Epochs'],
                         precision=config['BASEMODEL']['Precision'],
@@ -98,8 +104,11 @@ def main(config_file):
                         log_every_n_steps=50,
                         logger=logger)
 
+
+    # Get weights
+    config['DATA']['weights'] = get_class_weights(tile_dataset, label_encoder)
+
     model = ConvNet(config, label_encoder=label_encoder)
-    
     data = DataModule(
         tile_dataset,
         train_transform=train_transform,
